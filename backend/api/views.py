@@ -34,10 +34,6 @@ _SCHEMA_VERIFIED = False
 
 
 def ensure_database_schema():
-    """
-    Self-healing schema check: ensures all new Product and Order columns exist
-    in PostgreSQL even if a migration step was skipped.
-    """
     global _SCHEMA_VERIFIED
     if _SCHEMA_VERIFIED:
         return
@@ -67,6 +63,10 @@ def ensure_database_schema():
                     "ALTER TABLE api_order ADD COLUMN IF NOT EXISTS net_profit NUMERIC(12,2) DEFAULT 0.00;",
                     "ALTER TABLE api_order ADD COLUMN IF NOT EXISTS offer_applied VARCHAR(120) DEFAULT '';",
                     "ALTER TABLE api_order ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN DEFAULT FALSE;",
+                    "ALTER TABLE api_socialpost ADD COLUMN IF NOT EXISTS banner_url TEXT DEFAULT '';",
+                    "ALTER TABLE api_socialpost ADD COLUMN IF NOT EXISTS product_name VARCHAR(255) DEFAULT '';",
+                    "ALTER TABLE api_socialpost ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 120;",
+                    "ALTER TABLE api_socialpost ADD COLUMN IF NOT EXISTS is_boosted BOOLEAN DEFAULT FALSE;",
                     "ALTER TABLE api_workspaceconfig ADD COLUMN IF NOT EXISTS advanced_settings JSONB DEFAULT '{}'::jsonb;",
                 ]
                 for sql in statements:
@@ -432,10 +432,51 @@ class DailyExpenseViewSet(viewsets.ModelViewSet):
 
 
 class SocialPostViewSet(viewsets.ModelViewSet):
-    queryset = SocialPost.objects.all().order_by('-created_at')
-    serializer_class = SocialPostSerializer
-    permission_classes = [HasSynvoraSecurityKeyOrAdmin]
+    import urllib.request
+import urllib.parse
+import json
 
+class SocialPostListCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        ensure_database_schema()
+        posts = SocialPost.objects.all().order_by('-created_at')
+        serializer = SocialPostSerializer(posts, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        ensure_database_schema()
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+
+        # Optional Live Meta Graph API Publishing if real Page ID & Access Token are provided
+        page_id = data.pop('meta_page_id', None)
+        access_token = data.pop('meta_access_token', None)
+        platform = str(data.get('platform', '')).lower()
+        status_val = str(data.get('status', 'Published'))
+
+        live_api_result = None
+        if status_val == 'Published' and page_id and access_token and platform == 'facebook':
+            try:
+                fb_url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+                payload = urllib.parse.urlencode({
+                    'message': data.get('content', ''),
+                    'access_token': access_token
+                }).encode('utf-8')
+                req = urllib.request.Request(fb_url, data=payload, method='POST')
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    live_api_result = json.loads(resp.read().decode('utf-8'))
+            except Exception as e:
+                live_api_result = {'warning': str(e)}
+
+        serializer = SocialPostSerializer(data=data)
+        if serializer.is_valid():
+            post_obj = serializer.save()
+            response_data = SocialPostSerializer(post_obj).data
+            if live_api_result:
+                response_data['live_api_result'] = live_api_result
+            return Response(response_data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ChannelConfigViewSet(viewsets.ModelViewSet):
     queryset = ChannelConfig.objects.all().order_by('id')

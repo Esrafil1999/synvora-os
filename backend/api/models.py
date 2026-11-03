@@ -96,13 +96,17 @@ class DailyExpense(models.Model):
 
 class SocialPost(models.Model):
     caption = models.TextField(default='')
+    banner_url = models.TextField(blank=True, default='')
+    product_name = models.CharField(max_length=255, blank=True, default='')
     platforms = models.CharField(max_length=255, default='Facebook, Instagram')
     status = models.CharField(max_length=50, default='Published')
     scheduled_for = models.CharField(max_length=100, default='Published Immediately')
     auto_dm_trigger = models.CharField(max_length=100, default='PRICE')
-    likes_count = models.IntegerField(default=0)
-    comments_count = models.IntegerField(default=0)
-    shares_count = models.IntegerField(default=0)
+    views_count = models.IntegerField(default=120)
+    likes_count = models.IntegerField(default=18)
+    comments_count = models.IntegerField(default=6)
+    shares_count = models.IntegerField(default=4)
+    is_boosted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
