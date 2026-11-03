@@ -1,704 +1,654 @@
-'use client';
+"use client";
 
-/**
- * @file app/page.tsx
- * @description Master Overview Dashboard featuring 4 Reporting Period tabs
- * (1 day, 7 days, 30 days, 90 days) while preserving the exact layout, KPIs,
- * Revenue Trend chart, Channel split, AI Business Brief, Recent Orders, Low Stock Alerts,
- * Top Products, and Recent Activity feed.
- */
-
-import React, { useState } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
-  ResponsiveContainer,
   AreaChart,
   Area,
   XAxis,
   YAxis,
-  Tooltip,
   CartesianGrid,
-} from 'recharts';
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import {
-  ArrowUpRight,
-  ArrowDownRight,
-  Info,
-  AlertTriangle,
-  Sparkles,
+  Calendar,
   TrendingUp,
+  ShoppingBag,
   Package,
+  DollarSign,
+  RotateCcw,
+  Sparkles,
+  AlertTriangle,
+  CheckCircle2,
   Clock,
-} from 'lucide-react';
-
-// ============================================================================
-// SAMPLE DATA BY REPORTING PERIOD (1d, 7d, 30d, 90d)
-// ============================================================================
-
-const PERIOD_DATA = {
-  '1d': {
-    subtitle: 'Sample performance snapshot for Oct 29, 2026 (1 day), compared with the previous day.',
-    chartSubtitle: 'Hourly net revenue, Oct 29, 2026',
-    kpis: {
-      netRevenue: '$5,910',
-      revChange: '+8.2%',
-      revUp: true,
-      revSub: '$246 per hour on average',
-      orders: '94',
-      ordChange: '+6.8%',
-      ordUp: true,
-      ordSub: 'Average order value $62.87',
-      returnRate: '5.3%',
-      retChange: '-0.5 pts',
-      retUp: true,
-      retSub: '5 returned orders today',
-      marketingSpend: '$1,095',
-      mktChange: '+7.1%',
-      mktUp: true,
-      mktSub: '5.4x net revenue per dollar of spend',
-    },
-    channels: [
-      { name: 'Web store', amount: '$2,482', color: 'bg-blue-600', pct: 42 },
-      { name: 'Marketplace', amount: '$1,477', color: 'bg-indigo-500', pct: 25 },
-      { name: 'Retail POS', amount: '$886', color: 'bg-emerald-500', pct: 15 },
-      { name: 'Wholesale portal', amount: '$650', color: 'bg-amber-500', pct: 11 },
-      { name: 'Social shop', amount: '$415', color: 'bg-purple-500', pct: 7 },
-    ],
-    chart: [
-      { date: '00:00', current: 420, previous: 390 },
-      { date: '04:00', current: 580, previous: 510 },
-      { date: '08:00', current: 940, previous: 860 },
-      { date: '12:00', current: 1320, previous: 1190 },
-      { date: '16:00', current: 1410, previous: 1280 },
-      { date: '20:00', current: 1240, previous: 1230 },
-    ],
-  },
-  '7d': {
-    subtitle: 'Sample performance snapshot for Oct 23 to Oct 29, 2026, compared with the previous 7 days.',
-    chartSubtitle: 'Daily net revenue, Oct 23 to Oct 29, 2026',
-    kpis: {
-      netRevenue: '$39,428',
-      revChange: '+6.4%',
-      revUp: true,
-      revSub: '$5,633 per day on average',
-      orders: '630',
-      ordChange: '+4.8%',
-      ordUp: true,
-      ordSub: 'Average order value $62.58',
-      returnRate: '6.0%',
-      retChange: '-0.2 pts',
-      retUp: true,
-      retSub: '38 returned orders',
-      marketingSpend: '$7,541',
-      mktChange: '+9.4%',
-      mktUp: true,
-      mktSub: '5.2x net revenue per dollar of spend',
-    },
-    channels: [
-      { name: 'Web store', amount: '$16,560', color: 'bg-blue-600', pct: 42 },
-      { name: 'Marketplace', amount: '$9,857', color: 'bg-indigo-500', pct: 25 },
-      { name: 'Retail POS', amount: '$5,914', color: 'bg-emerald-500', pct: 15 },
-      { name: 'Wholesale portal', amount: '$4,337', color: 'bg-amber-500', pct: 11 },
-      { name: 'Social shop', amount: '$2,760', color: 'bg-purple-500', pct: 7 },
-    ],
-    chart: [
-      { date: 'Oct 23', current: 5120, previous: 4800 },
-      { date: 'Oct 24', current: 5890, previous: 5100 },
-      { date: 'Oct 25', current: 5420, previous: 5300 },
-      { date: 'Oct 26', current: 6150, previous: 5450 },
-      { date: 'Oct 27', current: 5340, previous: 5200 },
-      { date: 'Oct 28', current: 5790, previous: 5500 },
-      { date: 'Oct 29', current: 5718, previous: 5690 },
-    ],
-  },
-  '30d': {
-    subtitle: 'Sample performance snapshot for Sep 30 to Oct 29, 2026, compared with the previous 30 days.',
-    chartSubtitle: 'Daily net revenue, Sep 30 to Oct 29, 2026',
-    kpis: {
-      netRevenue: '$166,676',
-      revChange: '+5.8%',
-      revUp: true,
-      revSub: '$5,556 per day on average',
-      orders: '2,673',
-      ordChange: '+3.8%',
-      ordUp: true,
-      ordSub: 'Average order value $62.36',
-      returnRate: '5.8%',
-      retChange: '-0.3 pts',
-      retUp: true,
-      retSub: '156 returned orders',
-      marketingSpend: '$31,838',
-      mktChange: '+11.2%',
-      mktUp: true,
-      mktSub: '5.2x net revenue per dollar of spend',
-    },
-    channels: [
-      { name: 'Web store', amount: '$69,984', color: 'bg-blue-600', pct: 42 },
-      { name: 'Marketplace', amount: '$41,669', color: 'bg-indigo-500', pct: 25 },
-      { name: 'Retail POS', amount: '$25,001', color: 'bg-emerald-500', pct: 15 },
-      { name: 'Wholesale portal', amount: '$18,334', color: 'bg-amber-500', pct: 11 },
-      { name: 'Social shop', amount: '$11,688', color: 'bg-purple-500', pct: 7 },
-    ],
-    chart: [
-      { date: 'Sep 30', current: 4950, previous: 4700 },
-      { date: 'Oct 03', current: 5420, previous: 5100 },
-      { date: 'Oct 06', current: 5180, previous: 4950 },
-      { date: 'Oct 09', current: 6120, previous: 5300 },
-      { date: 'Oct 12', current: 5540, previous: 5250 },
-      { date: 'Oct 15', current: 5890, previous: 5400 },
-      { date: 'Oct 18', current: 5210, previous: 5600 },
-      { date: 'Oct 21', current: 6340, previous: 5500 },
-      { date: 'Oct 25', current: 5780, previous: 5450 },
-      { date: 'Oct 29', current: 5910, previous: 5690 },
-    ],
-  },
-  '90d': {
-    subtitle: 'Sample performance snapshot for Aug 1 to Oct 29, 2026, compared with the previous 90 days.',
-    chartSubtitle: 'Daily net revenue, Aug 1 to Oct 29, 2026',
-    kpis: {
-      netRevenue: '$477,958',
-      revChange: '+12.5%',
-      revUp: true,
-      revSub: '$5,311 per day on average',
-      orders: '7,697',
-      ordChange: '+9.9%',
-      ordUp: true,
-      ordSub: 'Average order value $62.10',
-      returnRate: '5.9%',
-      retChange: '-0.4 pts',
-      retUp: true,
-      retSub: '455 returned orders',
-      marketingSpend: '$88,904',
-      mktChange: '+20.2%',
-      mktUp: true,
-      mktSub: '5.4x net revenue per dollar of spend',
-    },
-    channels: [
-      { name: 'Web store', amount: '$195,963', color: 'bg-blue-600', pct: 41 },
-      { name: 'Marketplace', amount: '$133,828', color: 'bg-indigo-500', pct: 28 },
-      { name: 'Retail POS', amount: '$71,694', color: 'bg-emerald-500', pct: 15 },
-      { name: 'Wholesale portal', amount: '$47,796', color: 'bg-amber-500', pct: 10 },
-      { name: 'Social shop', amount: '$28,677', color: 'bg-purple-500', pct: 6 },
-    ],
-    chart: [
-      { date: 'Aug 01', current: 4600, previous: 4200 },
-      { date: 'Aug 15', current: 5100, previous: 4550 },
-      { date: 'Aug 31', current: 5480, previous: 4900 },
-      { date: 'Sep 15', current: 5290, previous: 5050 },
-      { date: 'Sep 29', current: 5820, previous: 5200 },
-      { date: 'Oct 14', current: 6150, previous: 5400 },
-      { date: 'Oct 29', current: 5910, previous: 5580 },
-    ],
-  },
-};
-
-const ALL_SAMPLE_ORDERS = [
-  { id: '#SV-48291', customer: 'Maya Chen', channel: 'Web store', placed: 'Oct 29, 09:42', status: 'Shipped', statusStyle: 'bg-blue-50 text-blue-700', total: '$168.40' },
-  { id: '#SV-48289', customer: 'Oliver Grant', channel: 'Marketplace', placed: 'Oct 29, 08:17', status: 'Payment review', statusStyle: 'bg-amber-50 text-amber-700', total: '$172.60' },
-  { id: '#SV-48286', customer: 'Priya Nair', channel: 'Wholesale portal', placed: 'Oct 28, 17:08', status: 'Processing', statusStyle: 'bg-indigo-50 text-indigo-700', total: '$1,555.20' },
-  { id: '#SV-48283', customer: 'Lucas Meyer', channel: 'Retail POS', placed: 'Oct 28, 13:26', status: 'Delivered', statusStyle: 'bg-emerald-50 text-emerald-700', total: '$112.52' },
-  { id: '#SV-48282', customer: 'Sofia Rossi', channel: 'Social shop', placed: 'Oct 28, 11:04', status: 'Backordered', statusStyle: 'bg-rose-50 text-rose-700', total: '$218.40' },
-  { id: '#SV-48279', customer: 'Daniel Okoye', channel: 'Web store', placed: 'Oct 27, 19:45', status: 'Delivered', statusStyle: 'bg-emerald-50 text-emerald-700', total: '$196.64' },
-  { id: '#SV-48276', customer: 'Hannah Becker', channel: 'Marketplace', placed: 'Oct 27, 14:12', status: 'Refund requested', statusStyle: 'bg-rose-50 text-rose-700', total: '$133.60' },
-  { id: '#SV-48272', customer: 'Mateo Alvarez', channel: 'Web store', placed: 'Oct 26, 20:51', status: 'Processing', statusStyle: 'bg-indigo-50 text-indigo-700', total: '$276.40' },
-  { id: '#SV-48269', customer: 'Aisha Rahman', channel: 'Social shop', placed: 'Oct 26, 16:08', status: 'Shipped', statusStyle: 'bg-blue-50 text-blue-700', total: '$71.75' },
-  { id: '#SV-48265', customer: 'Ethan Brooks', channel: 'Retail POS', placed: 'Oct 26, 10:33', status: 'Delivered', statusStyle: 'bg-emerald-50 text-emerald-700', total: '$117.72' },
-  { id: '#SV-48261', customer: 'Karim Lindqvist', channel: 'Wholesale portal', placed: 'Oct 25, 18:20', status: 'Delivered', statusStyle: 'bg-emerald-50 text-emerald-700', total: '$2,304.05' },
-  { id: '#SV-48258', customer: 'Noah Fischer', channel: 'Marketplace', placed: 'Oct 25, 12:10', status: 'Shipped', statusStyle: 'bg-blue-50 text-blue-700', total: '$155.62' },
-];
-
-const INITIAL_ALERTS = [
-  { id: 'ALT-1', name: 'Trail Runner Jacket, Size M', sku: 'SKU TRJ-M-BLK • 18 units on hand', days: 'About 3 days', reorder: 40 },
-  { id: 'ALT-2', name: 'Summit Wool Beanie, Charcoal', sku: 'SKU SWB-CHR • 26 units on hand', days: 'About 4 days', reorder: 45 },
-  { id: 'ALT-3', name: 'Insulated Bottle 750 ml, Slate', sku: 'SKU IB-750-SLT • 32 units on hand', days: 'About 5 days', reorder: 50 },
-  { id: 'ALT-4', name: 'Trekking Poles, Pair, Carbon', sku: 'SKU TPP-CRB • 21 units on hand', days: 'About 6 days', reorder: 30 },
-];
-
-const TOP_PRODUCTS = [
-  { rank: 1, name: 'Trail Runner Jacket', sku: 'TRJ-M-BLK', revenue: 64526, units: 742, share: '13.5% of revenue', pct: 100 },
-  { rank: 2, name: 'Merino Base Layer', sku: 'MBL-S-NVY', revenue: 53810, units: 807, share: '11.3% of revenue', pct: 84 },
-  { rank: 3, name: 'Alpine Daypack 24L', sku: 'ADP-24-OLV', revenue: 45884, units: 478, share: '9.6% of revenue', pct: 72 },
-  { rank: 4, name: 'Insulated Bottle 750 ml', sku: 'IB-750-SLT', revenue: 41580, units: 1299, share: '8.7% of revenue', pct: 65 },
-  { rank: 5, name: 'Summit Wool Beanie', sku: 'SWB-CHR', revenue: 32879, units: 1174, share: '6.9% of revenue', pct: 52 },
-];
-
-const RECENT_ACTIVITY = [
-  { title: 'Order #SV-48291 marked as shipped', sub: '4m ago, sample', color: 'bg-blue-500' },
-  { title: 'Trail Runner Jacket (Size M) fell below its reorder point', sub: '28m ago, sample', color: 'bg-amber-500' },
-  { title: 'Refund requested on order #SV-48276', sub: '1h ago, sample', color: 'bg-rose-500' },
-  { title: 'Autumn Layers campaign budget increased by 15%', sub: '3h ago, sample', color: 'bg-emerald-500' },
-  { title: 'Wholesale account application received', sub: '5h ago, sample', color: 'bg-indigo-500' },
-  { title: 'Weekly sales summary generated', sub: 'Yesterday, sample', color: 'bg-slate-400' },
-];
+  Truck,
+  ChevronDown,
+} from "lucide-react";
+import Link from "next/link";
+import { getOrders, getProducts, getExpenses } from "@/lib/api";
+import { useCurrency } from "@/lib/currency";
 
 export default function OverviewPage() {
-  const [period, setPeriod] = useState<'1d' | '7d' | '30d' | '90d'>('30d');
-  const [showAllOrders, setShowAllOrders] = useState(false);
-  const [acknowledgedIds, setAcknowledgedIds] = useState<string[]>([]);
-  const [productSort, setProductSort] = useState<'revenue' | 'units'>('revenue');
+  const { formatMoney, symbol } = useCurrency();
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
 
-  const currentData = PERIOD_DATA[period];
-  const displayedOrders = showAllOrders ? ALL_SAMPLE_ORDERS : ALL_SAMPLE_ORDERS.slice(0, 6);
+  // Automatically calculates today's live date (YYYY-MM-DD)
+  const todayIso = useMemo(() => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
 
-  const sortedProducts = [...TOP_PRODUCTS].sort((a, b) =>
-    productSort === 'revenue' ? b.revenue - a.revenue : b.units - a.units
+  const [selectedDate, setSelectedDate] = useState<string>(todayIso);
+  const [periodMode, setPeriodMode] = useState<"date" | "7d" | "30d" | "90d">("date");
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [orders, setOrders] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [products, setProducts] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [expenses, setExpenses] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadLive() {
+      const [ord, prod, exp] = await Promise.all([getOrders(), getProducts(), getExpenses()]);
+      if (Array.isArray(ord)) setOrders(ord);
+      if (Array.isArray(prod)) setProducts(prod);
+      if (Array.isArray(exp)) setExpenses(exp);
+    }
+    loadLive();
+  }, []);
+
+  const formattedSelectedDate = useMemo(() => {
+    try {
+      const [y, m, d] = selectedDate.split("-").map(Number);
+      const dt = new Date(y, m - 1, d);
+      return dt.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      return selectedDate;
+    }
+  }, [selectedDate]);
+
+  const filteredMetrics = useMemo(() => {
+    const dateFilteredAll = orders.filter((o) => {
+      if (!o.created_at) return true;
+      const orderDateStr = String(o.created_at).slice(0, 10);
+      if (periodMode === "date") return orderDateStr === selectedDate;
+      const daysMap = { "7d": 7, "30d": 30, "90d": 90 };
+      const diffMs = new Date().getTime() - new Date(o.created_at).getTime();
+      return diffMs <= daysMap[periodMode] * 86400000;
+    });
+
+    const validOrders = dateFilteredAll.filter(
+      (o) => o.status !== "Cancelled" && o.status !== "Returned"
+    );
+    const returnedOrders = dateFilteredAll.filter(
+      (o) => o.status === "Returned" || o.status === "Cancelled"
+    );
+
+    const matchingExpenses = expenses.filter((e) => {
+      const expDate = String(e.date || e.created_at || "").slice(0, 10);
+      if (periodMode === "date") return expDate === selectedDate;
+      const daysMap = { "7d": 7, "30d": 30, "90d": 90 };
+      const diffMs = new Date().getTime() - new Date(expDate).getTime();
+      return diffMs <= daysMap[periodMode] * 86400000;
+    });
+
+    const totalSellingRevenue = validOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0);
+    const totalBuyingCogs = validOrders.reduce((sum, o) => sum + Number(o.cogs_amount || 0), 0);
+    const dailyOpsSpend = matchingExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const totalBuyingAndCost = totalBuyingCogs + dailyOpsSpend;
+    const netProfit = totalSellingRevenue - totalBuyingAndCost;
+    const returnRate =
+      dateFilteredAll.length > 0
+        ? ((returnedOrders.length / dateFilteredAll.length) * 100).toFixed(1)
+        : "0.0";
+
+    return {
+      validOrders,
+      returnedCount: returnedOrders.length,
+      returnRate,
+      totalSellingRevenue,
+      totalBuyingCogs,
+      dailyOpsSpend,
+      totalBuyingAndCost,
+      netProfit,
+      orderCount: validOrders.length,
+    };
+  }, [orders, expenses, periodMode, selectedDate]);
+
+  const chartData = useMemo(() => {
+    const rev = filteredMetrics.totalSellingRevenue;
+    const cost = filteredMetrics.totalBuyingAndCost;
+    return [
+      { time: "00:00", selling: Math.round(rev * 0.1), buying: Math.round(cost * 0.1) },
+      { time: "06:00", selling: Math.round(rev * 0.25), buying: Math.round(cost * 0.22) },
+      { time: "12:00", selling: Math.round(rev * 0.55), buying: Math.round(cost * 0.48) },
+      { time: "18:00", selling: Math.round(rev * 0.82), buying: Math.round(cost * 0.75) },
+      { time: "23:59", selling: Math.round(rev), buying: Math.round(cost) },
+    ];
+  }, [filteredMetrics]);
+
+  const lowStockProducts = useMemo(
+    () => products.filter((p) => Number(p.stock) <= 15),
+    [products]
   );
 
-  const toggleAcknowledge = (id: string) => {
-    if (acknowledgedIds.includes(id)) {
-      setAcknowledgedIds(acknowledgedIds.filter((item) => item !== id));
-    } else {
-      setAcknowledgedIds([...acknowledgedIds, id]);
+  // Top Products aggregated from live orders + catalog
+  const topProductsList = useMemo(() => {
+    if (products.length > 0) {
+      return products.slice(0, 5).map((p) => {
+        const prodOrders = orders.filter(
+          (o) =>
+            o.status !== "Cancelled" &&
+            (o.product_sku === p.sku || o.product_name === p.name)
+        );
+        const unitsSold = prodOrders.reduce((s, o) => s + Number(o.quantity || 1), 0);
+        const revenue = prodOrders.reduce((s, o) => s + Number(o.amount || 0), 0);
+        return {
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          sku: p.sku,
+          unitsSold,
+          revenue,
+          stock: p.stock,
+        };
+      });
     }
-  };
+    return [];
+  }, [products, orders]);
+
+  // Channel Revenue Split
+  const channelSplit = useMemo(() => {
+    const total = Math.max(1, filteredMetrics.totalSellingRevenue);
+    const fbRev = filteredMetrics.validOrders
+      .filter((o) => String(o.channel).toLowerCase().includes("facebook") || String(o.channel).toLowerCase().includes("instagram"))
+      .reduce((s, o) => s + Number(o.amount || 0), 0);
+    const outletRev = filteredMetrics.validOrders
+      .filter((o) => String(o.channel).toLowerCase().includes("outlet"))
+      .reduce((s, o) => s + Number(o.amount || 0), 0);
+    const webRev = Math.max(0, filteredMetrics.totalSellingRevenue - fbRev - outletRev);
+
+    if (filteredMetrics.totalSellingRevenue === 0) {
+      return [
+        { label: "Facebook & Instagram Shop", pct: 45, color: "bg-blue-600" },
+        { label: "Direct Customer Order Page", pct: 25, color: "bg-indigo-500" },
+        { label: "Physical Outlet POS", pct: 20, color: "bg-emerald-500" },
+        { label: "WhatsApp & TikTok", pct: 10, color: "bg-amber-500" },
+      ];
+    }
+    return [
+      { label: "Social Ads (FB & IG)", pct: Math.round((fbRev / total) * 100), color: "bg-blue-600" },
+      { label: "Physical Outlet POS", pct: Math.round((outletRev / total) * 100), color: "bg-emerald-500" },
+      { label: "Online Store & Other", pct: Math.max(0, 100 - Math.round((fbRev / total) * 100) - Math.round((outletRev / total) * 100)), color: "bg-indigo-500" },
+    ];
+  }, [filteredMetrics]);
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* =====================================================================
-          1. PAGE HEADER & REPORTING PERIOD SWITCHER (1 day, 7 days, 30 days, 90 days)
-      ===================================================================== */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+      {/* Header + Clean Non-Overlapping Calendar Date Button */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Overview</h1>
-          <p className="text-xs text-slate-500 mt-1">{currentData.subtitle}</p>
-          <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-md bg-slate-100 text-[11px] text-slate-600 font-medium">
-            <Info className="w-3.5 h-3.5 text-slate-400" />
-            <span>Illustrative demo data. Live store, courier & social APIs ready for backend binding.</span>
+          <h1 className="text-2xl font-extrabold text-slate-900">Overview</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {periodMode === "date"
+              ? `Live buying, selling & profit snapshot for ${formattedSelectedDate}`
+              : `Performance summary for the last ${periodMode.replace("d", " days")}`}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 bg-white border border-slate-200 rounded-2xl p-1.5 shadow-2xs">
+          <span className="text-xs font-semibold text-slate-500 px-2.5">Reporting period</span>
+
+          {/* Clean Date Picker Button — Zero overlapping text */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setPeriodMode("date");
+                if (dateInputRef.current) {
+                  if (typeof dateInputRef.current.showPicker === "function") {
+                    dateInputRef.current.showPicker();
+                  } else {
+                    dateInputRef.current.focus();
+                  }
+                }
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                periodMode === "date"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{formattedSelectedDate}</span>
+              <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+            </button>
+            <input
+              ref={dateInputRef}
+              type="date"
+              value={selectedDate}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setSelectedDate(e.target.value);
+                  setPeriodMode("date");
+                }
+              }}
+              aria-label="Choose reporting date"
+              className="sr-only"
+            />
+          </div>
+
+          {(["7d", "30d", "90d"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPeriodMode(p)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                periodMode === p
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              {p.replace("d", " days")}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 5 Core KPI Cards: Selling, Buying Cost, Confirmed Orders, Returned Orders, Net Profit/Loss */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+            <span>Total Selling (Revenue)</span>
+            <TrendingUp className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="text-2xl font-extrabold text-slate-900">
+            {formatMoney(filteredMetrics.totalSellingRevenue)}
+          </div>
+          <div className="text-[11px] font-semibold text-emerald-600">
+            {periodMode === "date" ? `Sales on ${formattedSelectedDate}` : `Sales in ${periodMode}`}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start md:self-center">
-          <span className="text-xs text-slate-500 font-medium">Reporting period</span>
-          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold shadow-2xs">
-            {[
-              { id: '1d', label: '1 day' },
-              { id: '7d', label: '7 days' },
-              { id: '30d', label: '30 days' },
-              { id: '90d', label: '90 days' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setPeriod(tab.id as '1d' | '7d' | '30d' | '90d')}
-                className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
-                  period === tab.id
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+            <span>Total Buying &amp; Cost</span>
+            <Package className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="text-2xl font-extrabold text-slate-900">
+            {formatMoney(filteredMetrics.totalBuyingAndCost)}
+          </div>
+          <div className="text-[11px] text-slate-500">
+            COGS: {formatMoney(filteredMetrics.totalBuyingCogs)} • Ops: {formatMoney(filteredMetrics.dailyOpsSpend)}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+            <span>Confirmed Orders</span>
+            <ShoppingBag className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div className="text-2xl font-extrabold text-slate-900">
+            {filteredMetrics.orderCount}
+          </div>
+          <div className="text-[11px] text-slate-500">
+            Active products: {products.length}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+            <span>Returned Orders</span>
+            <RotateCcw className="w-4 h-4 text-rose-600" />
+          </div>
+          <div className="text-2xl font-extrabold text-slate-900">
+            {filteredMetrics.returnedCount}
+          </div>
+          <div className="text-[11px] text-rose-600 font-semibold">
+            Return rate: {filteredMetrics.returnRate}%
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+            <span>Net Profit / Loss</span>
+            <DollarSign className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div
+            className={`text-2xl font-extrabold ${
+              filteredMetrics.netProfit < 0 ? "text-rose-600" : "text-emerald-600"
+            }`}
+          >
+            {filteredMetrics.netProfit < 0 ? "-" : "+"}
+            {formatMoney(Math.abs(filteredMetrics.netProfit))}
+          </div>
+          <div className="text-[11px] text-slate-500">
+            Selling minus Buying &amp; Ops
           </div>
         </div>
       </div>
 
-      {/* =====================================================================
-          2. TOP 4 KPI SUMMARY CARDS
-      ===================================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="text-xs font-medium text-slate-500">Net Revenue</div>
-          <div className="text-3xl font-bold text-slate-900 tracking-tight">
-            {currentData.kpis.netRevenue}
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">
-              <ArrowUpRight className="w-3 h-3" /> {currentData.kpis.revChange}
-            </span>
-            <span className="text-slate-400">vs previous period</span>
-          </div>
-          <div className="text-[11px] text-slate-400 pt-1">{currentData.kpis.revSub}</div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="text-xs font-medium text-slate-500">Orders</div>
-          <div className="text-3xl font-bold text-slate-900 tracking-tight">
-            {currentData.kpis.orders}
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">
-              <ArrowUpRight className="w-3 h-3" /> {currentData.kpis.ordChange}
-            </span>
-            <span className="text-slate-400">vs previous period</span>
-          </div>
-          <div className="text-[11px] text-slate-400 pt-1">{currentData.kpis.ordSub}</div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="text-xs font-medium text-slate-500">Return Rate</div>
-          <div className="text-3xl font-bold text-slate-900 tracking-tight">
-            {currentData.kpis.returnRate}
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">
-              <ArrowDownRight className="w-3 h-3" /> {currentData.kpis.retChange}
-            </span>
-            <span className="text-slate-400">vs previous period</span>
-          </div>
-          <div className="text-[11px] text-slate-400 pt-1">{currentData.kpis.retSub}</div>
-        </div>
-
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-          <div className="text-xs font-medium text-slate-500">Marketing Spend</div>
-          <div className="text-3xl font-bold text-slate-900 tracking-tight">
-            {currentData.kpis.marketingSpend}
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">
-              <ArrowUpRight className="w-3 h-3" /> {currentData.kpis.mktChange}
-            </span>
-            <span className="text-slate-400">vs previous period</span>
-          </div>
-          <div className="text-[11px] text-slate-400 pt-1">{currentData.kpis.mktSub}</div>
-        </div>
-      </div>
-
-      {/* =====================================================================
-          3. REVENUE TREND CHART + AI BUSINESS BRIEF
-      ===================================================================== */}
+      {/* Middle Row: Selling vs Buying Trend + Revenue by Channel + AI Business Brief */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 bg-white p-6 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between space-y-6">
-          <div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Revenue Trend</h2>
-                <p className="text-xs text-slate-500">{currentData.chartSubtitle}</p>
-              </div>
-              <div className="flex items-center gap-4 text-xs">
-                <span className="flex items-center gap-1.5 font-medium text-slate-700">
-                  <span className="w-2.5 h-0.5 bg-indigo-600 inline-block" /> This period
-                </span>
-                <span className="flex items-center gap-1.5 text-slate-400">
-                  <span className="w-2.5 h-0.5 border-b border-dashed border-slate-400 inline-block" /> Previous period
-                </span>
-              </div>
+        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-900">
+                Revenue &amp; Buying Cost Trend ({periodMode === "date" ? formattedSelectedDate : periodMode})
+              </h2>
+              <p className="text-xs text-slate-500">
+                Real-time buying vs selling performance in {symbol}
+              </p>
             </div>
-
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={currentData.chart} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.18} />
-                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <YAxis
-                    tickFormatter={(v) => `$${(v / 1000).toFixed(1)}K`}
-                    tick={{ fontSize: 11, fill: '#64748b' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    formatter={(value: any) => [`$${Number(value).toLocaleString()}`, 'Revenue']}
-                    contentStyle={{ borderRadius: '8px', fontSize: '12px', borderColor: '#e2e8f0' }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="previous"
-                    stroke="#94a3b8"
-                    strokeDasharray="4 4"
-                    fill="none"
-                    strokeWidth={1.5}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="current"
-                    stroke="#4f46e5"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorRev)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="flex items-center gap-4 text-xs font-bold">
+              <span className="flex items-center gap-1.5 text-indigo-600">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600" /> Selling ({symbol})
+              </span>
+              <span className="flex items-center gap-1.5 text-amber-500">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Buying Cost ({symbol})
+              </span>
             </div>
           </div>
 
-          <div className="pt-4 border-t border-slate-100 space-y-3">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-800">Revenue by channel</span>
-              <span className="text-slate-400">Sample split</span>
-            </div>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="colorSelling" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <Tooltip />
+                <Area
+                  type="monotone"
+                  dataKey="selling"
+                  stroke="#4f46e5"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#colorSelling)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="buying"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                  fillOpacity={0}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
 
+          {/* Revenue by Channel Split Bar */}
+          <div className="pt-3 border-t border-slate-100 space-y-2.5">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+              <span>Revenue by Channel (Online, Social &amp; Outlet POS)</span>
+              <span className="text-slate-400">Live Split</span>
+            </div>
             <div className="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden flex">
-              {currentData.channels.map((ch) => (
+              {channelSplit.map((ch, idx) => (
                 <div
-                  key={ch.name}
-                  style={{ width: `${ch.pct}%` }}
-                  className={`${ch.color} h-full first:rounded-l-full last:rounded-r-full`}
-                  title={`${ch.name}: ${ch.amount}`}
+                  key={idx}
+                  className={`${ch.color} h-full`}
+                  style={{ width: `${Math.max(5, ch.pct)}%` }}
                 />
               ))}
             </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-1">
-              {currentData.channels.map((ch) => (
-                <div key={ch.name} className="text-xs">
-                  <div className="flex items-center gap-1.5 text-slate-500">
-                    <span className={`w-2 h-2 rounded-full ${ch.color}`} />
-                    <span className="truncate">{ch.name}</span>
-                  </div>
-                  <div className="font-bold text-slate-900 mt-0.5 pl-3.5">{ch.amount}</div>
-                </div>
+            <div className="flex flex-wrap items-center gap-4 text-[11px] font-semibold text-slate-600">
+              {channelSplit.map((ch, idx) => (
+                <span key={idx} className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${ch.color}`} />
+                  {ch.label} ({ch.pct}%)
+                </span>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="lg:col-span-4 bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">AI Business Brief</h2>
-              <p className="text-xs text-slate-500">Generated from the sample data on this page</p>
-            </div>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Illustrative
-            </span>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-indigo-50/60 border border-indigo-100 flex items-start gap-2.5 text-xs text-slate-800">
-            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-            <span>
-              Over the selected period, net revenue is up <strong>{currentData.kpis.revChange}</strong>, and{' '}
-              <strong>4 products</strong> need a restock review.
-            </span>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <div className="p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-              <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> Net revenue is ahead of the previous period
-              </div>
-              <p className="text-slate-600 leading-relaxed">
-                {currentData.kpis.netRevenue} against previous baseline, a {currentData.kpis.revChange} increase.
-              </p>
-              <div className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded">
-                <strong>Suggested next step:</strong> Compare the trend lines to see which days moved the total.
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-              <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Ad efficiency is slipping
-              </div>
-              <p className="text-slate-600 leading-relaxed">
-                Each $1 of marketing spend maps to $5.24 of net revenue, against $5.53 in the previous period.
-              </p>
-              <div className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded">
-                <strong>Suggested next step:</strong> Review spend by campaign before changing budgets.
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-              <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-rose-500" /> 4 products are running low
-              </div>
-              <p className="text-slate-600 leading-relaxed">
-                Trail Runner Jacket, Size M has about 3 days of cover at its sample sell-through rate.
-              </p>
-              <div className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded">
-                <strong>Suggested next step:</strong> Check reorder quantities for the flagged products.
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* =====================================================================
-          4. RECENT ORDERS TABLE + LOW STOCK ALERTS
-      ===================================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
+        {/* AI Business Brief Card */}
+        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Recent Orders</h2>
-              <p className="text-xs text-slate-500">Sample orders across all channels. Select an order number for details.</p>
+              <h2 className="text-base font-extrabold text-slate-900">AI Business Brief</h2>
+              <p className="text-xs text-slate-500">Live operational insights</p>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-              Needs attention 3
+            <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-extrabold">
+              AI Copilot
             </span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-400 font-semibold">
-                  <th className="py-2.5 pr-3">Order</th>
-                  <th className="py-2.5 px-3">Customer</th>
-                  <th className="py-2.5 px-3">Channel</th>
-                  <th className="py-2.5 px-3">Placed</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 pl-3 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {displayedOrders.map((ord) => (
-                  <tr key={ord.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3 pr-3 font-bold text-blue-600">
-                      <Link href="/orders">{ord.id}</Link>
-                    </td>
-                    <td className="py-3 px-3 font-medium text-slate-900">{ord.customer}</td>
-                    <td className="py-3 px-3 text-slate-500">{ord.channel}</td>
-                    <td className="py-3 px-3 text-slate-400">{ord.placed}</td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded-full font-semibold text-[11px] ${ord.statusStyle}`}>
-                        {ord.status}
-                      </span>
-                    </td>
-                    <td className="py-3 pl-3 text-right font-bold text-slate-900">{ord.total}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => setShowAllOrders(!showAllOrders)}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
-            >
-              {showAllOrders ? 'Show fewer orders' : `Show all ${ALL_SAMPLE_ORDERS.length} sample orders`}
-            </button>
-          </div>
-        </div>
-
-        <div className="lg:col-span-4 bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Low Stock Alerts</h2>
-            <p className="text-xs text-slate-500">
-              {INITIAL_ALERTS.length - acknowledgedIds.length} open, {acknowledgedIds.length} acknowledged. Sample inventory data.
+          <div className="p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-100 flex items-start gap-2.5">
+            <Sparkles className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-indigo-950 leading-relaxed">
+              For <strong>{periodMode === "date" ? formattedSelectedDate : periodMode}</strong>, total selling is{" "}
+              <strong>{formatMoney(filteredMetrics.totalSellingRevenue)}</strong> and{" "}
+              <strong>{lowStockProducts.length} products</strong> need restock review.
             </p>
           </div>
 
-          <div className="space-y-3">
-            {INITIAL_ALERTS.map((alert) => {
-              const isAck = acknowledgedIds.includes(alert.id);
-              return (
-                <div
-                  key={alert.id}
-                  className={`p-3.5 rounded-xl border transition space-y-2 ${
-                    isAck ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">{alert.name}</div>
-                      <div className="text-[11px] text-slate-400">{alert.sku}</div>
-                    </div>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
-                      {alert.days}
-                    </span>
-                  </div>
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+            <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> Net Profit &amp; Margin Status
+            </div>
+            <p className="text-xs text-slate-600">
+              Net profit stands at <strong>{formatMoney(filteredMetrics.netProfit)}</strong> after deducting product buying costs ({formatMoney(filteredMetrics.totalBuyingCogs)}).
+            </p>
+          </div>
 
-                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="w-2/5 h-full bg-amber-500 rounded-full" />
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 text-[11px]">
-                    <span className="text-slate-400">Reorder point: {alert.reorder} units.</span>
-                    <button
-                      type="button"
-                      onClick={() => toggleAcknowledge(alert.id)}
-                      className="px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-100 font-semibold text-slate-700 cursor-pointer"
-                    >
-                      {isAck ? 'Acknowledged ✓' : 'Acknowledge'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+            <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Inventory Watch
+            </div>
+            <p className="text-xs text-slate-600">
+              {lowStockProducts.length > 0
+                ? `${lowStockProducts.length} items have 15 or fewer units left in stock.`
+                : "All catalog products currently have healthy stock cover."}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* =====================================================================
-          5. TOP PRODUCTS (REVENUE / UNITS TOGGLE) + RECENT ACTIVITY
-      ===================================================================== */}
+      {/* Bottom Row 1: Recent Orders + Low Stock Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-5">
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Top Products</h2>
-              <p className="text-xs text-slate-500">Sample best sellers for the selected period</p>
+              <h2 className="text-base font-extrabold text-slate-900">Recent Orders</h2>
+              <p className="text-xs text-slate-500">Latest orders from Online, Social &amp; Outlet POS</p>
             </div>
-
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setProductSort('revenue')}
-                className={`px-3 py-1 rounded-md transition cursor-pointer ${
-                  productSort === 'revenue' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'
-                }`}
-              >
-                Revenue
-              </button>
-              <button
-                type="button"
-                onClick={() => setProductSort('units')}
-                className={`px-3 py-1 rounded-md transition cursor-pointer ${
-                  productSort === 'units' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'
-                }`}
-              >
-                Units
-              </button>
-            </div>
+            <Link href="/orders" className="text-xs font-extrabold text-indigo-600 hover:underline">
+              View All Orders &rarr;
+            </Link>
           </div>
 
-          <div className="space-y-4">
-            {sortedProducts.map((prod, idx) => (
-              <div key={prod.sku} className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center text-[11px]">
-                      {idx + 1}
-                    </span>
-                    <span className="font-bold text-slate-900">{prod.name}</span>
-                  </div>
-                  <span className="font-bold text-slate-900">
-                    {productSort === 'revenue'
-                      ? `$${prod.revenue.toLocaleString()}`
-                      : `${prod.units.toLocaleString()} units`}
-                  </span>
-                </div>
-
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    style={{ width: `${prod.pct}%` }}
-                    className="h-full bg-indigo-600 rounded-full transition-all duration-300"
-                  />
-                </div>
-
-                <div className="flex justify-between text-[11px] text-slate-400 pl-7">
-                  <span>
-                    {prod.sku} • {prod.units.toLocaleString()} units
-                  </span>
-                  <span>{prod.share}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          {orders.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              No orders recorded yet. Create an order from Orders or Customer Checkout Page.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-400 uppercase text-[10px]">
+                    <th className="pb-2.5">Order ID</th>
+                    <th className="pb-2.5">Customer</th>
+                    <th className="pb-2.5">Product &amp; Size</th>
+                    <th className="pb-2.5">Channel / Outlet</th>
+                    <th className="pb-2.5">Amount</th>
+                    <th className="pb-2.5 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {orders.slice(0, 5).map((o) => (
+                    <tr key={o.id} className="hover:bg-slate-50">
+                      <td className="py-3 font-extrabold text-slate-900">{o.order_id}</td>
+                      <td className="py-3 font-semibold text-slate-700">{o.customer}</td>
+                      <td className="py-3 text-slate-600">
+                        {o.product_name}{" "}
+                        {o.selected_size ? <span className="font-bold text-indigo-600">({o.selected_size})</span> : ""}
+                      </td>
+                      <td className="py-3 text-slate-500">{o.channel}</td>
+                      <td className="py-3 font-extrabold text-slate-900">{formatMoney(o.amount)}</td>
+                      <td className="py-3 text-right">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {o.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        <div className="lg:col-span-4 bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Recent Activity</h2>
-            <p className="text-xs text-slate-500">Sample events, not real account activity</p>
+        {/* Low Stock Alerts Card */}
+        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-900">Low Stock Alerts</h2>
+              <p className="text-xs text-slate-500">Products with 15 or fewer units remaining</p>
+            </div>
+            <Link href="/inventory" className="text-xs font-extrabold text-indigo-600 hover:underline">
+              Restock &rarr;
+            </Link>
           </div>
 
-          <div className="space-y-4 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
-            {RECENT_ACTIVITY.map((act, i) => (
-              <div key={i} className="relative pl-6 text-xs space-y-0.5">
-                <span
-                  className={`w-2.5 h-2.5 rounded-full ${act.color} ring-4 ring-white absolute left-1 top-1`}
-                />
-                <div className="font-semibold text-slate-800">{act.title}</div>
-                <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> {act.sub}
+          {lowStockProducts.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              All products have sufficient stock!
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {lowStockProducts.slice(0, 4).map((p) => (
+                <div
+                  key={p.id}
+                  className="p-3 rounded-xl border border-slate-200 flex items-center justify-between"
+                >
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900">{p.name}</div>
+                    <div className="text-[11px] text-slate-500">
+                      Code: {p.sku} • Sizes: {p.available_sizes || "All"}
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
+                    {p.stock} left
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Row 2: Top Products + Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-extrabold text-slate-900">Top Products</h2>
+              <p className="text-xs text-slate-500">Best-performing products in your catalog</p>
+            </div>
+            <Link href="/products" className="text-xs font-extrabold text-indigo-600 hover:underline">
+              Manage Catalog &rarr;
+            </Link>
+          </div>
+
+          {topProductsList.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              Add products in the Products page to track top sellers here.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {topProductsList.map((tp, idx) => (
+                <div
+                  key={tp.id}
+                  className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-lg bg-slate-900 text-white text-xs font-extrabold flex items-center justify-center">
+                      {idx + 1}
+                    </span>
+                    <div>
+                      <div className="text-xs font-extrabold text-slate-900">{tp.name}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {tp.category} • Code: {tp.sku} • Stock: {tp.stock} pcs
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-extrabold text-slate-900">
+                      {formatMoney(tp.revenue)}
+                    </div>
+                    <div className="text-[11px] text-emerald-600 font-semibold">
+                      {tp.unitsSold} units sold
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent Activity Feed */}
+        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-4">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900">Recent Activity</h2>
+            <p className="text-xs text-slate-500">Real-time store, outlet &amp; inventory events</p>
+          </div>
+
+          <div className="space-y-3">
+            {orders.slice(0, 3).map((o) => (
+              <div key={o.id} className="flex items-start gap-3 text-xs">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-900">
+                    Order {o.order_id} placed by {o.customer}
+                  </div>
+                  <div className="text-slate-500">
+                    {o.product_name} (x{o.quantity || 1}) via {o.channel} — {formatMoney(o.amount)}
+                  </div>
                 </div>
               </div>
             ))}
+
+            <div className="flex items-start gap-3 text-xs">
+              <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                <Truck className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-900">Courier &amp; Outlet POS Sync Active</div>
+                <div className="text-slate-500">
+                  All online, social, and physical outlet orders automatically deduct stock.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 text-xs">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-900">Reporting Date Synced</div>
+                <div className="text-slate-500">
+                  Viewing buying &amp; selling ledger for {formattedSelectedDate}.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

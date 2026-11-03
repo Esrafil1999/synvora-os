@@ -1,17 +1,11 @@
-'use client';
+"use client";
 
-/**
- * @file DashboardShell.tsx
- * @description Master layout featuring interactive Workspace Switcher, Global Search Shortcut Palette,
- * Notifications Popover, Profile Menu with Login/Admin links, and Light/Dark Mode Engine.
- */
-
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  ShoppingCart,
+  ShoppingBag,
   Package,
   Boxes,
   Truck,
@@ -29,373 +23,259 @@ import {
   Settings,
   Search,
   Bell,
+  Moon,
+  Sun,
   ChevronDown,
   Sparkles,
-  Sun,
-  Moon,
-  Check,
-  LogOut,
-  Database,
-} from 'lucide-react';
+  ExternalLink,
+} from "lucide-react";
+import { GLOBAL_CURRENCIES, useCurrency } from "@/lib/currency";
+import { getWorkspaceConfig } from "@/lib/api";
 
-const WORKSPACES = [
-  { name: 'Northwind Outfitters', sub: 'Outdoor gear & apparel', code: 'NO' },
-  { name: 'Harbor & Co. Home', sub: 'Home goods & ceramics', code: 'HC' },
-  { name: 'Lumen Skincare', sub: 'Direct-to-consumer beauty', code: 'LS' },
-];
-
-const navGroups = [
+const NAV_SECTIONS = [
   {
-    label: 'Core Commerce',
+    title: "CORE COMMERCE",
     items: [
-      { name: 'Overview', href: '/', icon: LayoutDashboard, badge: 'Live' },
-      { name: 'Orders', href: '/orders', icon: ShoppingCart, badge: 'Live' },
-      { name: 'Products', href: '/products', icon: Package, badge: 'Live' },
-      { name: 'Inventory', href: '/inventory', icon: Boxes, badge: 'Live' },
-      { name: 'Fulfillment', href: '/fulfillment', icon: Truck, badge: 'Live' },
-      { name: 'Customers', href: '/customers', icon: Users, badge: 'Live' },
+      { name: "Overview", href: "/", icon: LayoutDashboard, badge: "Live" },
+      { name: "Orders", href: "/orders", icon: ShoppingBag, badge: "Live" },
+      { name: "Products", href: "/products", icon: Package, badge: "Live" },
+      { name: "Inventory", href: "/inventory", icon: Boxes, badge: "Live" },
+      { name: "Fulfillment", href: "/fulfillment", icon: Truck, badge: "Live" },
+      { name: "Customers", href: "/customers", icon: Users, badge: "Live" },
     ],
   },
   {
-    label: 'Engage & Social',
+    title: "ENGAGE & SOCIAL",
     items: [
-      { name: 'Unified Inbox', href: '/unified-inbox', icon: MessageSquare, badge: 'Live' },
-      { name: 'Social Studio', href: '/social-studio', icon: Share2, badge: 'Live' },
-      { name: 'Marketing & Ads', href: '/marketing-ads', icon: Megaphone, badge: 'Pro' },
+      { name: "Unified Inbox", href: "/unified-inbox", icon: MessageSquare, badge: "Live" },
+      { name: "Social Studio", href: "/social-studio", icon: Share2, badge: "Live" },
+      { name: "Marketing & Ads", href: "/marketing-ads", icon: Megaphone, badge: "Pro" },
     ],
   },
   {
-    label: 'Intelligence',
+    title: "INTELLIGENCE",
     items: [
-      { name: 'Analytics & P&L', href: '/analytics', icon: BarChart3, badge: 'Live' },
-      { name: 'Automations', href: '/automations', icon: Zap, badge: 'Pro' },
-      { name: 'AI Copilot', href: '/ai-copilot', icon: Bot, badge: 'AI' },
+      { name: "Analytics & P&L", href: "/analytics", icon: BarChart3, badge: "Live" },
+      { name: "Automations", href: "/automations", icon: Zap, badge: "Pro" },
+      { name: "AI Copilot", href: "/ai-copilot", icon: Bot, badge: "AI" },
     ],
   },
   {
-    label: 'Workspace',
+    title: "WORKSPACE",
     items: [
-      { name: 'Channels', href: '/channels', icon: Globe, badge: 'Live' },
-      { name: 'Integrations', href: '/integrations', icon: Plug, badge: 'Live' },
-      { name: 'Team & Roles', href: '/team-roles', icon: ShieldCheck, badge: 'Pro' },
-      { name: 'Billing', href: '/billing', icon: CreditCard, badge: 'Live' },
-      { name: 'Settings', href: '/settings', icon: Settings },
+      { name: "Channels", href: "/channels", icon: Globe, badge: "Live" },
+      { name: "Integrations", href: "/integrations", icon: Plug, badge: "Live" },
+      { name: "Team & Roles", href: "/team-roles", icon: ShieldCheck, badge: "Pro" },
+      { name: "Billing", href: "/billing", icon: CreditCard, badge: "Live" },
+      { name: "Settings", href: "/settings", icon: Settings, badge: "" },
     ],
   },
 ];
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
+  const { currency, changeCurrency } = useCurrency();
   const [darkMode, setDarkMode] = useState(false);
-  const [activeWorkspace, setActiveWorkspace] = useState(WORKSPACES[0]);
-  const [wsOpen, setWsOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchText, setSearchText] = useState('');
+  const [workspaceName, setWorkspaceName] = useState("My Business Store");
+  const [aiCredits, setAiCredits] = useState({ remaining: 4200, total: 5000 });
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('synvora-theme');
-    if (savedTheme === 'dark') {
+    const savedTheme = localStorage.getItem("synvora_theme");
+    if (savedTheme === "dark") {
       setDarkMode(true);
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add("dark");
     }
+    async function loadWs() {
+      const ws = await getWorkspaceConfig();
+      if (ws) {
+        if (ws.workspace_name) setWorkspaceName(String(ws.workspace_name));
+        if (ws.ai_credits_remaining !== undefined) {
+          setAiCredits({
+            remaining: Number(ws.ai_credits_remaining),
+            total: Number(ws.ai_credits_total || 5000),
+          });
+        }
+      }
+    }
+    loadWs();
   }, []);
 
   const toggleTheme = () => {
-    const nextDark = !darkMode;
-    setDarkMode(nextDark);
-    if (nextDark) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('synvora-theme', 'dark');
+    const next = !darkMode;
+    setDarkMode(next);
+    if (next) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("synvora_theme", "dark");
     } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('synvora-theme', 'light');
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("synvora_theme", "light");
     }
   };
 
+  if (pathname === "/store" || pathname === "/login") {
+    return <>{children}</>;
+  }
+
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans transition-colors duration-200">
-      {/* Left Navigation Sidebar */}
-      <aside className="w-64 bg-[#0B0F19] text-slate-300 flex flex-col border-r border-slate-800 shrink-0">
-        <div className="p-4 flex items-center gap-3 border-b border-slate-800/80">
-          <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
-            S
-          </div>
-          <div>
-            <div className="font-bold text-white tracking-wider text-sm flex items-center gap-1.5">
-              SYNVORA <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">OS</span>
+    <div className="h-screen overflow-hidden flex bg-slate-50 text-slate-900">
+      {/* Fixed Full-Height Left Sidebar — Never stretches with right-side page content */}
+      <aside className="w-60 h-screen bg-slate-950 text-slate-200 flex flex-col justify-between shrink-0 border-r border-slate-800 select-none overflow-hidden">
+        {/* Top Brand + Store Switcher */}
+        <div className="shrink-0">
+          <div className="px-4 py-3.5 flex items-center gap-3 border-b border-slate-800/80">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center font-black text-white text-sm shadow-sm">
+              S
             </div>
-            <div className="text-[11px] text-slate-400">Commerce & Social Suite</div>
-          </div>
-        </div>
-
-        {/* Workspace Switcher */}
-        <div className="p-3 border-b border-slate-800/80 relative">
-          <button
-            type="button"
-            onClick={() => setWsOpen(!wsOpen)}
-            className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-left transition cursor-pointer"
-          >
             <div>
-              <div className="text-xs font-semibold text-white">{activeWorkspace.name}</div>
-              <div className="text-[10px] text-emerald-400">● {activeWorkspace.sub}</div>
-            </div>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
-          </button>
-
-          {wsOpen && (
-            <div className="absolute left-3 right-3 top-16 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 z-50 space-y-1">
-              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Workspaces
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-sm tracking-wide text-white">SYNVORA</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                  OS
+                </span>
               </div>
-              {WORKSPACES.map((w) => (
-                <button
-                  key={w.name}
-                  type="button"
-                  onClick={() => {
-                    setActiveWorkspace(w);
-                    setWsOpen(false);
-                  }}
-                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-slate-800 text-left text-xs transition"
-                >
-                  <div>
-                    <div className="font-semibold text-white">{w.name}</div>
-                    <div className="text-[10px] text-slate-400">{w.sub}</div>
-                  </div>
-                  {activeWorkspace.name === w.name && <Check className="w-3.5 h-3.5 text-blue-400" />}
-                </button>
-              ))}
+              <p className="text-[10px] text-slate-400">Commerce &amp; Social Suite</p>
             </div>
-          )}
+          </div>
+
+          <div className="px-3 py-2.5 border-b border-slate-800/80">
+            <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+              <div className="truncate">
+                <div className="text-xs font-bold text-white truncate">{workspaceName}</div>
+                <div className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  {currency.country} ({currency.symbol})
+                </div>
+              </div>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            </div>
+          </div>
         </div>
 
-        {/* Navigation Links */}
-        <div className="flex-1 overflow-y-auto py-3 px-2.5 space-y-5">
-          {navGroups.map((group) => (
-            <div key={group.label}>
-              <div className="px-2.5 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                {group.label}
+        {/* Navigation Links — Compact & Clean */}
+        <nav className="flex-1 overflow-y-auto px-2.5 py-2 space-y-3">
+          {NAV_SECTIONS.map((sec) => (
+            <div key={sec.title} className="space-y-0.5">
+              <div className="px-2.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-slate-500">
+                {sec.title}
               </div>
-              <div className="space-y-0.5">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition ${
-                        isActive
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Icon className="w-4 h-4 shrink-0" />
-                        <span>{item.name}</span>
-                      </div>
-                      {item.badge && (
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                            isActive
-                              ? 'bg-blue-700 text-white'
-                              : item.badge === 'Pro'
-                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              : item.badge === 'AI'
-                              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                              : 'bg-slate-800 text-slate-400'
-                          }`}
-                        >
-                          {item.badge}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
+              {sec.items.map((item) => {
+                const Icon = item.icon;
+                const active = pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    prefetch={true}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                      active
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "text-slate-300 hover:bg-slate-900 hover:text-white"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon className="w-3.5 h-3.5" />
+                      {item.name}
+                    </span>
+                    {item.badge && (
+                      <span
+                        className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                          active
+                            ? "bg-white/20 text-white"
+                            : item.badge === "Pro"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            : item.badge === "AI"
+                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                            : "bg-slate-800 text-slate-400"
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
             </div>
           ))}
-        </div>
+        </nav>
 
-        {/* AI Credits Footer */}
-        <div className="p-3 border-t border-slate-800 bg-slate-900/50">
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="text-slate-400 flex items-center gap-1">
+        {/* Pinned Bottom AI Credits Footer — Always stays locked at bottom of sidebar */}
+        <div className="shrink-0 p-3 border-t border-slate-800 bg-slate-900/80 space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-slate-300 font-bold flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-purple-400" /> AI Credits
             </span>
-            <span className="text-white font-semibold">850 / 1,000</span>
+            <span className="text-white font-extrabold">
+              {aiCredits.remaining.toLocaleString()} / {aiCredits.total.toLocaleString()}
+            </span>
           </div>
-          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-            <div className="w-[85%] h-full bg-linear-to-r from-blue-500 to-purple-500 rounded-full" />
+          <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+            <div
+              className="h-full bg-linear-to-r from-indigo-500 to-purple-500 rounded-full"
+              style={{
+                width: `${Math.min(100, Math.round((aiCredits.remaining / aiCredits.total) * 100))}%`,
+              }}
+            />
           </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 relative z-30">
-          <div className="relative w-96 max-w-full">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+      {/* Right Column: Fixed Header + Independently Scrollable Main Viewport */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+        <header className="h-14 shrink-0 bg-white border-b border-slate-200 px-6 flex items-center justify-between gap-4 z-20">
+          <div className="relative w-full max-w-md">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2" />
             <input
               type="text"
-              value={searchText}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setTimeout(() => setSearchFocused(false), 180)}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Search orders, customers, modules... (Ctrl+K)"
-              className="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              placeholder="Search orders, products, customers..."
+              className="w-full pl-10 pr-4 py-1.5 rounded-xl bg-slate-100/80 border border-slate-200 text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-
-            {searchFocused && (
-              <div className="absolute left-0 right-0 top-11 bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-50 space-y-1 text-xs">
-                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Quick Navigation Shortcuts
-                </div>
-                {[
-                  { name: 'Overview', sub: 'Executive performance snapshot', href: '/' },
-                  { name: 'Orders', sub: 'Track, review and fulfill orders', href: '/orders' },
-                  { name: 'Social Studio', sub: 'Multi-channel post composer & scheduler', href: '/social-studio' },
-                  { name: 'Analytics & P&L', sub: 'Daily profit & loss calculator', href: '/analytics' },
-                  { name: 'Super Admin Portal', sub: 'Database & system health center', href: '/admin' },
-                ].map((s) => (
-                  <button
-                    key={s.name}
-                    type="button"
-                    onMouseDown={() => router.push(s.href)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 text-left"
-                  >
-                    <div>
-                      <div className="font-semibold text-slate-900">{s.name}</div>
-                      <div className="text-[11px] text-slate-400">{s.sub}</div>
-                    </div>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">Module</span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="hidden lg:inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
-              Neon Cloud PostgreSQL Active
-            </span>
+          <div className="flex items-center gap-2.5">
+            <Link
+              href="/store"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-extrabold transition"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Customer Order Page
+            </Link>
+
+            <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5">
+              <Globe className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <select
+                value={currency.code}
+                onChange={(e) => changeCurrency(e.target.value)}
+                aria-label="Select Market Currency"
+                className="bg-transparent text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer"
+              >
+                {GLOBAL_CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <button
-              type="button"
               onClick={toggleTheme}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition cursor-pointer"
+              className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
             >
-              {darkMode ? (
-                <>
-                  <Sun className="w-4 h-4 text-amber-400" />
-                  <span className="hidden sm:inline">Light</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="w-4 h-4 text-slate-600" />
-                  <span className="hidden sm:inline">Dark</span>
-                </>
-              )}
+              {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5" />}
+              <span>{darkMode ? "Light" : "Dark"}</span>
             </button>
 
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setNotifOpen(!notifOpen);
-                  setProfileOpen(false);
-                }}
-                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 relative cursor-pointer"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center absolute -top-0.5 -right-0.5">
-                  3
-                </span>
-              </button>
+            <button className="relative p-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600">
+              <Bell className="w-4 h-4" />
+            </button>
 
-              {notifOpen && (
-                <div className="absolute right-0 top-11 w-80 bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-50 space-y-3 text-xs">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <span className="font-bold text-slate-900">Notifications</span>
-                    <button onClick={() => setNotifOpen(false)} className="text-[11px] text-blue-600 font-semibold">
-                      Mark all as read
-                    </button>
-                  </div>
-                  <div className="space-y-2.5 divide-y divide-slate-100">
-                    <div className="pt-1">
-                      <div className="font-semibold text-slate-800">Fulfillment queue updated</div>
-                      <div className="text-[11px] text-slate-500">12 orders are waiting to ship.</div>
-                    </div>
-                    <div className="pt-2">
-                      <div className="font-semibold text-slate-800">Low stock: Trail Runner Jacket, M</div>
-                      <div className="text-[11px] text-slate-500">14 units remaining in Neon PostgreSQL.</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Profile Dropdown with Admin & Login Links */}
-            <div className="relative pl-3 border-l border-slate-200">
-              <button
-                type="button"
-                onClick={() => {
-                  setProfileOpen(!profileOpen);
-                  setNotifOpen(false);
-                }}
-                className="flex items-center gap-2.5 cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
-                  AM
-                </div>
-                <div className="hidden sm:block text-left">
-                  <div className="text-xs font-semibold text-slate-800 leading-none">Avery Morgan</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Enterprise Admin</div>
-                </div>
-              </button>
-
-              {profileOpen && (
-                <div className="absolute right-0 top-11 w-56 bg-white border border-slate-200 rounded-xl shadow-xl p-3 z-50 space-y-1.5 text-xs">
-                  <div className="border-b border-slate-100 pb-2 mb-1">
-                    <div className="font-bold text-slate-900">Avery Morgan</div>
-                    <div className="text-[11px] text-slate-400">admin@synvorait.com</div>
-                  </div>
-                  <Link
-                    href="/admin"
-                    onClick={() => setProfileOpen(false)}
-                    className="block px-2.5 py-1.5 rounded hover:bg-slate-50 text-blue-600 font-semibold"
-                  >
-                    Super Admin Control Center
-                  </Link>
-                  <Link
-                    href="/settings"
-                    onClick={() => setProfileOpen(false)}
-                    className="block px-2.5 py-1.5 rounded hover:bg-slate-50 text-slate-700 font-medium"
-                  >
-                    Workspace Settings
-                  </Link>
-                  <Link
-                    href="/billing"
-                    onClick={() => setProfileOpen(false)}
-                    className="block px-2.5 py-1.5 rounded hover:bg-slate-50 text-slate-700 font-medium"
-                  >
-                    Billing & Plans
-                  </Link>
-                  <div className="border-t border-slate-100 pt-1.5 mt-1">
-                    <Link
-                      href="/login"
-                      onClick={() => setProfileOpen(false)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded hover:bg-rose-50 text-rose-600 font-semibold"
-                    >
-                      <LogOut className="w-3.5 h-3.5" /> Sign Out / Switch Account
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
+            <Link href="/settings" className="flex items-center gap-2 pl-2 border-l border-slate-200">
+              <div className="w-7 h-7 rounded-full bg-indigo-600 text-white font-extrabold text-xs flex items-center justify-center">
+                {workspaceName.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="hidden sm:block text-left">
+                <div className="text-xs font-extrabold text-slate-900 leading-none">{workspaceName}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">Business Owner</div>
+              </div>
+            </Link>
           </div>
         </header>
 
