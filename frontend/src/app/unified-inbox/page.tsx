@@ -10,26 +10,17 @@ import {
   getWorkspaceConfig,
   updateWorkspaceConfig,
 } from "@/lib/api";
-import { useCurrency, printIsolatedOrderSlip } from "@/lib/currency";
+import { useCurrency } from "@/lib/currency";
 import {
-  MessageSquare,
   Send,
   Bot,
   UserCheck,
   Search,
   ShoppingBag,
   Sparkles,
-  CheckCircle2,
   Phone,
   MapPin,
   Mail,
-  Heart,
-  Share2,
-  MessageCircle,
-  Plus,
-  Printer,
-  Clock,
-  Tag,
   UserPlus,
 } from "lucide-react";
 
@@ -59,15 +50,13 @@ interface InboxConversation {
 }
 
 export default function UnifiedInboxPage() {
-  const { formatMoney, symbol } = useCurrency();
+  const { formatMoney } = useCurrency();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [products, setProducts] = useState<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [orders, setOrders] = useState<any[]>([]);
   const [conversations, setConversations] = useState<InboxConversation[]>([]);
   const [selectedConvId, setSelectedConvId] = useState<string>("");
 
-  // Left Filter Rail State (Matches Reference Image 1)
+  // Left Filter Rail State
   const [folderFilter, setFolderFilter] = useState<
     "all" | "ai" | "human" | "leads_no_purchase" | "buyers" | "social_triggers"
   >("all");
@@ -76,11 +65,11 @@ export default function UnifiedInboxPage() {
   >("All");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Center Composer State (Matches Reference Image 2)
+  // Center Composer State
   const [composerTab, setComposerTab] = useState<"chat" | "promo" | "simulate_customer">("chat");
   const [messageInput, setMessageInput] = useState("");
 
-  // Right Panel: Instant Order POS Builder State (Connected to Live Products DB!)
+  // Right Panel: Instant Order POS Builder State
   const [posProductId, setPosProductId] = useState<string>("");
   const [posSize, setPosSize] = useState<string>("L");
   const [posColor, setPosColor] = useState<string>("");
@@ -93,7 +82,9 @@ export default function UnifiedInboxPage() {
   const [simName, setSimName] = useState("");
   const [simPhone, setSimPhone] = useState("");
   const [simAddress, setSimAddress] = useState("Dhaka");
-  const [simChannel, setSimChannel] = useState<"Facebook" | "Instagram" | "WhatsApp" | "TikTok">("Facebook");
+  const [simChannel, setSimChannel] = useState<"Facebook" | "Instagram" | "WhatsApp" | "TikTok">(
+    "Facebook"
+  );
   const [simTrigger, setSimTrigger] = useState<
     "Direct Message" | "Post Comment" | "Liked Post" | "Shared Post"
   >("Direct Message");
@@ -112,7 +103,6 @@ export default function UnifiedInboxPage() {
     const custList = Array.isArray(custData) ? custData : [];
 
     setProducts(prodList);
-    setOrders(ordList);
 
     if (prodList.length > 0 && !posProductId) {
       const first = prodList[0];
@@ -123,24 +113,28 @@ export default function UnifiedInboxPage() {
       setPosColor(cl || "Standard");
     }
 
-    // Build conversations from saved workspace threads + database customers & orders
     const savedThreads: InboxConversation[] = Array.isArray(wsData?.inbox_threads)
       ? wsData.inbox_threads
       : [];
 
     const mergedMap = new Map<string, InboxConversation>();
     for (const t of savedThreads) {
-      mergedMap.set(t.id, t);
+      mergedMap.set(t.id, {
+        ...t,
+        mode: t.mode === "human" ? "human" : "ai",
+      });
     }
 
-    // Ensure every customer from database is represented in Unified Inbox
     for (const c of custList) {
-      const phoneKey = String(c.phone && c.phone !== "N/A" ? c.phone : c.name).toLowerCase().trim();
+      const phoneKey = String(c.phone && c.phone !== "N/A" ? c.phone : c.name)
+        .toLowerCase()
+        .trim();
       if (!phoneKey) continue;
       const convId = `conv_${phoneKey.replace(/[^a-z0-9]/g, "")}`;
 
       const custOrders = ordList.filter(
-        (o) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (o: any) =>
           o.status !== "Cancelled" &&
           (String(o.customer_phone || "").toLowerCase() === phoneKey ||
             String(o.customer || "").toLowerCase() === String(c.name || "").toLowerCase())
@@ -148,7 +142,8 @@ export default function UnifiedInboxPage() {
       const ordCount = Math.max(Number(c.orders_count || 0), custOrders.length);
       const totalSpent = Math.max(
         Number(c.total_spent || 0),
-        custOrders.reduce((s, o) => s + Number(o.amount || 0), 0)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        custOrders.reduce((s: number, o: any) => s + Number(o.amount || 0), 0)
       );
       const lastOrd = custOrders[0];
 
@@ -213,6 +208,7 @@ export default function UnifiedInboxPage() {
 
   useEffect(() => {
     loadInboxAndDatabase();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const persistConversations = async (nextList: InboxConversation[]) => {
@@ -237,10 +233,7 @@ export default function UnifiedInboxPage() {
       if (folderFilter === "human" && c.mode !== "human") return false;
       if (folderFilter === "leads_no_purchase" && c.hasPurchased) return false;
       if (folderFilter === "buyers" && !c.hasPurchased) return false;
-      if (
-        folderFilter === "social_triggers" &&
-        c.triggerType === "Direct Message"
-      ) {
+      if (folderFilter === "social_triggers" && c.triggerType === "Direct Message") {
         return false;
       }
 
@@ -254,8 +247,10 @@ export default function UnifiedInboxPage() {
     });
   }, [conversations, channelFilter, folderFilter, searchQuery]);
 
-  // Generate automated AI reply using live products from database
-  const generateSmartAiReply = (buyerText: string, conv: InboxConversation): { reply: string; switchToHuman: boolean } => {
+  const generateSmartAiReply = (
+    buyerText: string,
+    conv: InboxConversation
+  ): { reply: string; switchToHuman: boolean } => {
     const lower = buyerText.toLowerCase();
     if (
       lower.includes("human") ||
@@ -280,9 +275,11 @@ export default function UnifiedInboxPage() {
 
     if (matchedProd) {
       return {
-        reply: `Yes, ${conv.customerName}! "${matchedProd.name}" (Code: ${matchedProd.sku}) is in stock at ${formatMoney(
-          matchedProd.effective_price
-        )}. Available Sizes: [${matchedProd.available_sizes || "Standard"}], Colors: [${
+        reply: `Yes, ${conv.customerName}! "${matchedProd.name}" (Code: ${
+          matchedProd.sku
+        }) is in stock at ${formatMoney(matchedProd.effective_price)}. Available Sizes: [${
+          matchedProd.available_sizes || "Standard"
+        }], Colors: [${
           matchedProd.available_colors || "Standard"
         }]. Reply with your Size, Color & Address to order, or type "Human Agent" to speak with our staff!`,
         switchToHuman: false,
@@ -303,7 +300,6 @@ export default function UnifiedInboxPage() {
     };
   };
 
-  // Handle sending message from center composer (as Human Agent, Promo Broadcast, or Simulated Customer)
   const handleSendComposerMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeConv || !messageInput.trim()) return;
@@ -312,7 +308,6 @@ export default function UnifiedInboxPage() {
     const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     if (composerTab === "simulate_customer") {
-      // Simulate the customer messaging in from Facebook/IG/WhatsApp/TikTok
       const customerMsg: ChatMessageItem = {
         id: `m_${Date.now()}`,
         sender: "customer",
@@ -320,8 +315,8 @@ export default function UnifiedInboxPage() {
         time: nowTime,
       };
 
-      const updatedMessages = [...activeConv.messages, customerMsg];
-      let nextMode = activeConv.mode;
+      const updatedMessages: ChatMessageItem[] = [...activeConv.messages, customerMsg];
+      let nextMode: "ai" | "human" = activeConv.mode;
 
       if (activeConv.mode === "ai") {
         const aiResult = generateSmartAiReply(text, activeConv);
@@ -342,7 +337,7 @@ export default function UnifiedInboxPage() {
         });
       }
 
-      const nextList = conversations.map((c) =>
+      const nextList: InboxConversation[] = conversations.map((c) =>
         c.id === activeConv.id
           ? { ...c, mode: nextMode, messages: updatedMessages, updatedAt: "Just Now" }
           : c
@@ -351,7 +346,6 @@ export default function UnifiedInboxPage() {
       return;
     }
 
-    // Sent by Human Agent or Promotional Offer
     const agentMsg: ChatMessageItem = {
       id: `m_${Date.now()}`,
       sender: "human",
@@ -359,7 +353,7 @@ export default function UnifiedInboxPage() {
       time: nowTime,
     };
 
-    const nextList = conversations.map((c) =>
+    const nextList: InboxConversation[] = conversations.map((c) =>
       c.id === activeConv.id
         ? { ...c, messages: [...c.messages, agentMsg], updatedAt: "Just Now" }
         : c
@@ -367,12 +361,10 @@ export default function UnifiedInboxPage() {
     await persistConversations(nextList);
   };
 
-  // Simulate New Incoming Lead (Direct Message, Post Comment, Like, or Share) -> Auto-saves to Customer CRM!
   const handleCreateSimulatedLead = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!simName.trim() || !simPhone.trim()) return;
 
-    // 1. Save Lead to PostgreSQL Customer table with orders_count = 0 (Messaged / No Purchase Yet!)
     await createCustomer({
       name: simName.trim(),
       phone: simPhone.trim(),
@@ -434,7 +426,7 @@ export default function UnifiedInboxPage() {
       ],
     };
 
-    const nextList = [newConv, ...conversations];
+    const nextList: InboxConversation[] = [newConv, ...conversations];
     await persistConversations(nextList);
     setSelectedConvId(newConv.id);
     setSimName("");
@@ -443,7 +435,6 @@ export default function UnifiedInboxPage() {
     setShowSimulateModal(false);
   };
 
-  // Instant 1-Click POS Order Creation from Right Panel -> Syncs to Orders, Deducts Stock & Marks Buyer in CRM!
   const handleCreateInChatOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeConv || !selectedPosProduct) return;
@@ -460,7 +451,8 @@ export default function UnifiedInboxPage() {
       customer_phone: activeConv.customerPhone,
       delivery_address: activeConv.customerAddress,
       channel: `${activeConv.channel} Inbox`,
-      order_source_type: activeConv.mode === "human" ? "Human Agent Inbox POS" : "AI Inbox Auto-Order",
+      order_source_type:
+        activeConv.mode === "human" ? "Human Agent Inbox POS" : "AI Inbox Auto-Order",
       payment: posPayment,
       status: "Confirmed",
     });
@@ -470,13 +462,15 @@ export default function UnifiedInboxPage() {
       const confirmMsg: ChatMessageItem = {
         id: `ord_${Date.now()}`,
         sender: "system",
-        text: `✓ Order Confirmed (${created.order_id})! ${qty}x ${selectedPosProduct.name} (Size: ${posSize}, Color: ${
-          posColor || "Standard"
-        }) — Total: ${formatMoney(created.amount)} (${posPayment}). Inventory deducted & synced to CRM!`,
+        text: `✓ Order Confirmed (${created.order_id})! ${qty}x ${
+          selectedPosProduct.name
+        } (Size: ${posSize}, Color: ${posColor || "Standard"}) — Total: ${formatMoney(
+          created.amount
+        )} (${posPayment}). Inventory deducted & synced to CRM!`,
         time: nowTime,
       };
 
-      const nextList = conversations.map((c) =>
+      const nextList: InboxConversation[] = conversations.map((c) =>
         c.id === activeConv.id
           ? {
               ...c,
@@ -532,9 +526,9 @@ export default function UnifiedInboxPage() {
         </button>
       </div>
 
-      {/* Main 4-Column Inbox Workspace (Matches Reference Images 1 & 2) */}
+      {/* Main 4-Column Inbox Workspace */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* COLUMN 1: Left Folder & Channel Rail (Matches Reference Image 1) */}
+        {/* COLUMN 1: Left Folder & Channel Rail */}
         <div className="w-52 shrink-0 bg-white border-r border-slate-200 p-3.5 flex flex-col justify-between overflow-y-auto text-xs">
           <div className="space-y-5">
             <div className="space-y-1">
@@ -547,7 +541,11 @@ export default function UnifiedInboxPage() {
                 { id: "human", label: "Human Agent Queue", count: counts.human },
                 { id: "leads_no_purchase", label: "Messaged (No Purchase)", count: counts.noPurchase },
                 { id: "buyers", label: "Purchased Buyers", count: counts.buyers },
-                { id: "social_triggers", label: "Like / Comment / Share", count: conversations.filter((c) => c.triggerType !== "Direct Message").length },
+                {
+                  id: "social_triggers",
+                  label: "Like / Comment / Share",
+                  count: conversations.filter((c) => c.triggerType !== "Direct Message").length,
+                },
               ].map((f) => (
                 <button
                   key={f.id}
@@ -559,7 +557,7 @@ export default function UnifiedInboxPage() {
                   }`}
                 >
                   <span className="truncate">{f.label}</span>
-                  <span className="px-1.5 py-0.2 rounded-md text-[10px] bg-slate-100 text-slate-700 font-extrabold">
+                  <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-slate-100 text-slate-700 font-extrabold">
                     {f.count}
                   </span>
                 </button>
@@ -609,7 +607,7 @@ export default function UnifiedInboxPage() {
           </div>
         </div>
 
-        {/* COLUMN 2: Messages / Conversation List (Matches Reference Image 1 & 2) */}
+        {/* COLUMN 2: Messages / Conversation List */}
         <div className="w-72 shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden">
           <div className="p-3.5 border-b border-slate-200 space-y-2.5">
             <div className="flex items-center justify-between">
@@ -658,7 +656,7 @@ export default function UnifiedInboxPage() {
                           </div>
                           <div className="flex items-center gap-1 mt-0.5">
                             <span
-                              className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded ${
+                              className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
                                 conv.channel === "Facebook"
                                   ? "bg-blue-50 text-blue-700"
                                   : conv.channel === "Instagram"
@@ -697,7 +695,7 @@ export default function UnifiedInboxPage() {
                       </span>
 
                       <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                           conv.mode === "human"
                             ? "bg-rose-100 text-rose-800"
                             : "bg-indigo-100 text-indigo-800"
@@ -713,7 +711,7 @@ export default function UnifiedInboxPage() {
           </div>
         </div>
 
-        {/* COLUMN 3: Center Chat Stream & AI / Human Controller (Matches Reference Image 2) */}
+        {/* COLUMN 3: Center Chat Stream & AI / Human Controller */}
         <div className="flex-1 flex flex-col bg-slate-50/60 min-w-0 overflow-hidden">
           {activeConv ? (
             <>
@@ -733,7 +731,8 @@ export default function UnifiedInboxPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      const nextMode = activeConv.mode === "ai" ? "human" : "ai";
+                      const nextMode: "ai" | "human" =
+                        activeConv.mode === "ai" ? "human" : "ai";
                       const sysNote: ChatMessageItem = {
                         id: `sys_${Date.now()}`,
                         sender: "system",
@@ -746,7 +745,7 @@ export default function UnifiedInboxPage() {
                           minute: "2-digit",
                         }),
                       };
-                      const nextList = conversations.map((c) =>
+                      const nextList: InboxConversation[] = conversations.map((c) =>
                         c.id === activeConv.id
                           ? { ...c, mode: nextMode, messages: [...c.messages, sysNote] }
                           : c
@@ -822,7 +821,7 @@ export default function UnifiedInboxPage() {
                 ))}
               </div>
 
-              {/* Bottom Chat Composer (Matches Reference Image 2 — No ugly scrollbar!) */}
+              {/* Bottom Chat Composer */}
               <div className="shrink-0 bg-white border-t border-slate-200 p-3.5 space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-3 border-b border-slate-100 pb-1 text-xs font-extrabold">
@@ -861,7 +860,6 @@ export default function UnifiedInboxPage() {
                     </button>
                   </div>
 
-                  {/* Clean Wrapped Smart Reply Pills — Zero Horizontal Scrollbar */}
                   <div className="flex flex-wrap gap-1.5">
                     {[
                       "Yes, available in stock!",
@@ -910,10 +908,9 @@ export default function UnifiedInboxPage() {
           )}
         </div>
 
-        {/* COLUMN 4: Right Customer Information, Last Order & Instant POS Panel (Matches Reference Image 2) */}
+        {/* COLUMN 4: Right Customer Information, Last Order & Instant POS Panel */}
         {activeConv && (
           <div className="w-80 shrink-0 bg-white border-l border-slate-200 p-4 overflow-y-auto space-y-4 text-xs">
-            {/* Customer Profile Summary */}
             <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
               <div className="w-10 h-10 rounded-full bg-indigo-600 text-white font-extrabold text-sm flex items-center justify-center shrink-0">
                 {activeConv.customerName.slice(0, 2).toUpperCase()}
@@ -928,7 +925,6 @@ export default function UnifiedInboxPage() {
               </div>
             </div>
 
-            {/* Customer Information Box (Matches Reference Image 2) */}
             <div className="p-3.5 rounded-2xl border border-slate-200 space-y-2">
               <div className="font-extrabold text-slate-900">Customer Information</div>
               <div className="flex items-center gap-2 text-slate-600">
@@ -954,13 +950,15 @@ export default function UnifiedInboxPage() {
                   }`}
                 >
                   {activeConv.hasPurchased
-                    ? `✓ Verified Buyer (${activeConv.ordersCount} Orders • ${formatMoney(activeConv.totalSpent)})`
+                    ? `✓ Verified Buyer (${activeConv.ordersCount} Orders • ${formatMoney(
+                        activeConv.totalSpent
+                      )})`
                     : "Messaged Lead — 0 Purchases in CRM"}
                 </span>
               </div>
             </div>
 
-            {/* Instant Chat-to-Order POS Builder (Connected to Real Database Products!) */}
+            {/* Instant Chat-to-Order POS Builder */}
             <form
               onSubmit={handleCreateInChatOrder}
               className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/60 space-y-3"
@@ -1067,7 +1065,6 @@ export default function UnifiedInboxPage() {
               </button>
             </form>
 
-            {/* Customer Summary Footer (Matches Reference Image 2) */}
             <div className="p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between">
               <span className="text-slate-500 font-bold">Lifetime Value</span>
               <span className="text-sm font-extrabold text-slate-900">

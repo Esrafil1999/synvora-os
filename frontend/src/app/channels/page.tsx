@@ -402,8 +402,7 @@ export default function ChannelsPage() {
   const connectedCount = channels.filter((c) => c.connected).length;
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1440px] mx-auto space-y-6">
-      {/* Notification Toast */}
+<div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">      {/* Notification Toast */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3.5 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-3">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />

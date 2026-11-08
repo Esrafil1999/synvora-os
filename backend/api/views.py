@@ -436,16 +436,20 @@ class SocialPostViewSet(viewsets.ModelViewSet):
 import urllib.parse
 import json
 
-class SocialPostListCreateView(APIView):
+import urllib.request
+import urllib.parse
+import json
+
+class SocialPostViewSet(viewsets.ModelViewSet):
+    queryset = SocialPost.objects.all().order_by('-created_at')
+    serializer_class = SocialPostSerializer
     permission_classes = [AllowAny]
 
-    def get(self, request):
+    def get_queryset(self):
         ensure_database_schema()
-        posts = SocialPost.objects.all().order_by('-created_at')
-        serializer = SocialPostSerializer(posts, many=True)
-        return Response(serializer.data)
+        return SocialPost.objects.all().order_by('-created_at')
 
-    def post(self, request):
+    def create(self, request, *args, **kwargs):
         ensure_database_schema()
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
 
@@ -469,14 +473,16 @@ class SocialPostListCreateView(APIView):
             except Exception as e:
                 live_api_result = {'warning': str(e)}
 
-        serializer = SocialPostSerializer(data=data)
-        if serializer.is_valid():
-            post_obj = serializer.save()
-            response_data = SocialPostSerializer(post_obj).data
-            if live_api_result:
-                response_data['live_api_result'] = live_api_result
-            return Response(response_data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        response_data = dict(serializer.data)
+        if live_api_result:
+            response_data['live_api_result'] = live_api_result
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+SocialPostListCreateView = SocialPostViewSet
 
 class ChannelConfigViewSet(viewsets.ModelViewSet):
     queryset = ChannelConfig.objects.all().order_by('id')
