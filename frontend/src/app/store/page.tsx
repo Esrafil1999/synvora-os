@@ -16,11 +16,13 @@ import {
   CreditCard,
   AlertCircle,
   Bot,
+  Ban,
 } from "lucide-react";
 import {
   getProducts,
   createOrder,
   createCustomer,
+  patchToApi,
 } from "@/lib/api";
 import {
   useCurrency,
@@ -134,10 +136,11 @@ export default function CustomerStorefrontPage() {
   const [verifiedPaymentTrx, setVerifiedPaymentTrx] = useState<string | null>(null);
   const [verifiedProviderName, setVerifiedProviderName] = useState<string>("");
 
-  // Final Confirmation & Official Receipt
+  // Final Confirmation & Instant Popup Receipt Modal
   const [confirmSpecsChecked, setConfirmSpecsChecked] = useState(true);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [confirmedOrderReceipt, setConfirmedOrderReceipt] = useState<any | null>(null);
+  const [showReceiptPopupModal, setShowReceiptPopupModal] = useState(false);
   const [submittingOrder, setSubmittingOrder] = useState(false);
 
   // Multilingual Step-by-Step AI Order Assistant Drawer
@@ -150,18 +153,23 @@ export default function CustomerStorefrontPage() {
   >("select_product");
   const [aiSelectedProduct, setAiSelectedProduct] = useState<ProductItem | null>(null);
 
+  const loadCatalogProducts = async () => {
+    const res = await getProducts();
+    const list: ProductItem[] = Array.isArray(res) ? res : [];
+    setProducts(list);
+    return list;
+  };
+
   useEffect(() => {
-    getProducts().then((res) => {
-      const list: ProductItem[] = Array.isArray(res) ? res : [];
-      setProducts(list);
-      if (list.length > 0) {
-        const first = list[0];
-        setSelectedProductId(String(first.id));
-        const firstSize = (first.available_sizes || "L")
+    loadCatalogProducts().then((list) => {
+      const firstInStock = list.find((p) => Number(p.stock || 0) > 0) || list[0];
+      if (firstInStock) {
+        setSelectedProductId(String(firstInStock.id));
+        const firstSize = (firstInStock.available_sizes || "L")
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean)[0];
-        const firstColor = (first.available_colors || "Black")
+        const firstColor = (firstInStock.available_colors || "Black")
           .split(",")
           .map((c) => c.trim())
           .filter(Boolean)[0];
@@ -188,6 +196,18 @@ export default function CustomerStorefrontPage() {
     () => products.find((p) => String(p.id) === selectedProductId) || null,
     [products, selectedProductId]
   );
+
+  // Strict Stock Validation
+  const availableStock = useMemo(() => {
+    if (customOrderMode) return 999;
+    if (!activeProduct) return 0;
+    return Math.max(0, Number(activeProduct.stock ?? 0));
+  }, [customOrderMode, activeProduct]);
+
+  const isOutOfStock = !customOrderMode && activeProduct !== null && availableStock <= 0;
+  const isExceedingStock =
+    !customOrderMode && activeProduct !== null && availableStock > 0 && quantity > availableStock;
+  const hasStockError = isOutOfStock || isExceedingStock;
 
   const availableSizesList = useMemo(() => {
     if (!activeProduct?.available_sizes) return ["Standard"];
@@ -218,6 +238,7 @@ export default function CustomerStorefrontPage() {
       .filter(Boolean);
     setSelectedSize(sizes[0] || "Standard");
     setSelectedColor(colors[0] || "Standard");
+    setQuantity(1);
     setAppliedPromoDiscount(0);
     setFreeDeliveryApplied(false);
     setPromoFeedback(null);
@@ -286,6 +307,18 @@ export default function CustomerStorefrontPage() {
   };
 
   const handleOpenPaymentGatewayPopup = () => {
+    if (!activeProduct && !customOrderMode) {
+      alert("Please select a product from the catalog above first.");
+      return;
+    }
+    if (hasStockError) {
+      alert(
+        isOutOfStock
+          ? `Sorry! "${activeProduct?.name}" is currently Out of Stock (0 pcs available).`
+          : `Only ${availableStock} pcs of "${activeProduct?.name}" are available in stock.`
+      );
+      return;
+    }
     if (!customerName.trim() || !customerPhone.trim() || !customerAddress.trim()) {
       alert("Please fill in your Name, Phone Number, and Delivery Address before proceeding to payment.");
       return;
@@ -371,6 +404,7 @@ export default function CustomerStorefrontPage() {
     setVerifiedProviderName(providerLabel);
     setShowGatewayPopup(false);
 
+    // Automatically finalize the order and open the centered Receipt Popup!
     await finalizeOrderCreation("Paid", `${providerLabel} (TrxID: ${trx})`);
   };
 
@@ -378,6 +412,18 @@ export default function CustomerStorefrontPage() {
     paymentStatusVal: "Paid" | "COD Pending",
     paymentMethodLabel: string
   ) => {
+    if (!activeProduct && !customOrderMode) {
+      alert("Please select a product to order first.");
+      return;
+    }
+    if (hasStockError) {
+      alert(
+        isOutOfStock
+          ? `OUT OF STOCK: "${activeProduct?.name}" has 0 pcs left in stock!`
+          : `Insufficient stock! Only ${availableStock} pcs available.`
+      );
+      return;
+    }
     if (!customerName.trim() || !customerPhone.trim() || !customerAddress.trim()) {
       alert("Please enter your Name, Phone Number, and full Delivery Address.");
       return;
@@ -428,6 +474,19 @@ export default function CustomerStorefrontPage() {
 
       const created = await createOrder(payload);
 
+      // Deduct stock immediately in frontend & backend so out-of-stock works in real time
+      if (!customOrderMode && activeProduct) {
+        const newStock = Math.max(0, Number(activeProduct.stock || 0) - quantity);
+        const updatedProducts = products.map((p) =>
+          String(p.id) === String(activeProduct.id) ? { ...p, stock: newStock } : p
+        );
+        setProducts(updatedProducts);
+        localStorage.setItem("synvora_db_products", JSON.stringify(updatedProducts));
+        await patchToApi(`/products/${activeProduct.id}/`, { stock: newStock }).catch(
+          () => {}
+        );
+      }
+
       await createCustomer({
         name: customerName.trim(),
         phone: customerPhone.trim(),
@@ -438,7 +497,7 @@ export default function CustomerStorefrontPage() {
         total_spent: grandTotal,
       });
 
-      setConfirmedOrderReceipt({
+      const receiptObj = {
         order_id: created?.order_id || `#SYN-${Math.floor(100000 + Math.random() * 900000)}`,
         date: new Date().toISOString().slice(0, 10),
         customer: customerName.trim(),
@@ -456,7 +515,21 @@ export default function CustomerStorefrontPage() {
         payment: paymentMethodLabel,
         payment_status: paymentStatusVal,
         channel: orderSource,
-      });
+      };
+
+      setConfirmedOrderReceipt(receiptObj);
+      // Open the centered Receipt Popup Modal immediately so the customer doesn't have to scroll up!
+      setShowReceiptPopupModal(true);
+
+      // Reset selection & form state so the completed order is closed cleanly
+      setSelectedProductId("");
+      setQuantity(1);
+      setCustomerNotes("");
+      setPromoInput("");
+      setAppliedPromoDiscount(0);
+      setFreeDeliveryApplied(false);
+      setPromoFeedback(null);
+      setVerifiedPaymentTrx(null);
     } finally {
       setSubmittingOrder(false);
     }
@@ -467,7 +540,12 @@ export default function CustomerStorefrontPage() {
     if (aiMessages.length === 0) {
       const catalogText = products
         .slice(0, 5)
-        .map((p) => `• ${p.name} (Code: ${p.sku}, Price: ${formatMoney(p.effective_price)})`)
+        .map(
+          (p) =>
+            `• ${p.name} (Code: ${p.sku}, Price: ${formatMoney(p.effective_price)}, Stock: ${
+              p.stock > 0 ? `${p.stock} pcs` : "OUT OF STOCK"
+            })`
+        )
         .join("\n");
       setAiMessages([
         {
@@ -507,7 +585,6 @@ export default function CustomerStorefrontPage() {
     }
 
     const lower = text.toLowerCase();
-
     const wantsShoes =
       lower.includes("jota") ||
       lower.includes("juta") ||
@@ -541,6 +618,18 @@ export default function CustomerStorefrontPage() {
       });
 
       if (found) {
+        if (Number(found.stock || 0) <= 0) {
+          setAiMessages((prev) => [
+            ...prev,
+            userMsg,
+            {
+              id: `ai_${Date.now() + 1}`,
+              sender: "ai",
+              text: `Sorry! "${found.name}" is currently OUT OF STOCK (0 pcs remaining). Please choose another available item from our catalog!`,
+            },
+          ]);
+          return;
+        }
         setAiSelectedProduct(found);
         handleSelectProduct(found);
         setAiOrderStep("select_size");
@@ -551,14 +640,21 @@ export default function CustomerStorefrontPage() {
             id: `ai_${Date.now() + 1}`,
             sender: "ai",
             matchedProduct: found,
-            text: `Great choice! "${found.name}" (Code: ${found.sku}) is available in stock!\nPrice: ${formatMoney(
-              found.effective_price
-            )}\nAvailable Sizes: [${found.available_sizes || "Standard"}]\n\nStep 2: Which Size do you need?`,
+            text: `Great choice! "${found.name}" (Code: ${found.sku}) is in stock (${
+              found.stock
+            } pcs)!\nPrice: ${formatMoney(found.effective_price)}\nAvailable Sizes: [${
+              found.available_sizes || "Standard"
+            }]\n\nStep 2: Which Size do you need?`,
           },
         ]);
       } else {
         const listStr = products
-          .map((p) => `• ${p.name} (${p.category} — ${formatMoney(p.effective_price)})`)
+          .map(
+            (p) =>
+              `• ${p.name} (${formatMoney(p.effective_price)} — ${
+                p.stock > 0 ? `${p.stock} in stock` : "OUT OF STOCK"
+              })`
+          )
           .join("\n");
         setAiMessages((prev) => [
           ...prev,
@@ -566,9 +662,7 @@ export default function CustomerStorefrontPage() {
           {
             id: `ai_${Date.now() + 1}`,
             sender: "ai",
-            text: `Here are the products currently in stock:\n${listStr}\n\nPlease type the product name (e.g. "${
-              products[0]?.name || "Air Force"
-            }") to select it!`,
+            text: `Here are the products in our catalog:\n${listStr}\n\nPlease type the product name to select it!`,
           },
         ]);
       }
@@ -684,83 +778,7 @@ export default function CustomerStorefrontPage() {
           </p>
         </div>
 
-        {/* Confirmed Order Receipt Banner */}
-        {confirmedOrderReceipt && (
-          <div className="bg-emerald-950 text-white rounded-2xl p-6 border border-emerald-700 shadow-xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-800 pb-4">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
-                <div>
-                  <h2 className="text-lg font-black text-white">
-                    Order Confirmed! ({confirmedOrderReceipt.order_id})
-                  </h2>
-                  <p className="text-xs text-emerald-200">
-                    Thank you, {confirmedOrderReceipt.customer}! Your order has been registered in our system.
-                  </p>
-                </div>
-              </div>
-              <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-extrabold">
-                {confirmedOrderReceipt.payment_status === "Paid"
-                  ? `✓ PAID ONLINE (${confirmedOrderReceipt.payment})`
-                  : "CASH ON DELIVERY (COD)"}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-emerald-900/50 p-4 rounded-xl">
-              <div>
-                <span className="text-emerald-300 block">Product &amp; Specs:</span>
-                <strong className="text-white">
-                  {confirmedOrderReceipt.quantity}x {confirmedOrderReceipt.product_name} (Size:{" "}
-                  {confirmedOrderReceipt.selected_size}, Color: {confirmedOrderReceipt.selected_color})
-                </strong>
-              </div>
-              <div>
-                <span className="text-emerald-300 block">Delivery Charge (Courier):</span>
-                <strong className="text-white">
-                  {confirmedOrderReceipt.delivery_fee === 0
-                    ? "FREE (Promo)"
-                    : formatMoney(confirmedOrderReceipt.delivery_fee)}
-                </strong>
-              </div>
-              <div>
-                <span className="text-emerald-300 block">Grand Total Bill:</span>
-                <strong className="text-base text-emerald-300">
-                  {formatMoney(confirmedOrderReceipt.amount)}
-                </strong>
-              </div>
-              <div>
-                <span className="text-emerald-300 block">Delivery Address:</span>
-                <strong className="text-white">{confirmedOrderReceipt.delivery_address}</strong>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => printIsolatedOrderSlip(confirmedOrderReceipt, symbol)}
-                className="px-4 py-2.5 rounded-xl bg-white text-slate-900 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="w-4 h-4" /> Print Official Receipt
-              </button>
-              <button
-                type="button"
-                onClick={() => downloadOfficialOrderReceipt(confirmedOrderReceipt, symbol)}
-                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-4 h-4" /> Download Invoice Slip
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmedOrderReceipt(null)}
-                className="px-4 py-2.5 rounded-xl border border-emerald-700 text-emerald-200 text-xs font-bold cursor-pointer"
-              >
-                Place Another Order
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Section 1: Mini-Storefront Product Selector */}
+        {/* Section 1: Mini-Storefront Product Selector (With Real-Time Stock & Red OUT OF STOCK Badge) */}
         <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
@@ -784,12 +802,19 @@ export default function CustomerStorefrontPage() {
                 const isSelected = String(prod.id) === selectedProductId;
                 const regular = Number(prod.selling_price || prod.effective_price || 0);
                 const effective = Number(prod.effective_price || regular);
+                const prodStock = Math.max(0, Number(prod.stock ?? 0));
+                const soldOut = prodStock <= 0;
+
                 return (
                   <div
                     key={prod.id}
                     onClick={() => handleSelectProduct(prod)}
                     className={`rounded-2xl p-3.5 border transition cursor-pointer flex flex-col justify-between ${
-                      isSelected
+                      soldOut
+                        ? isSelected
+                          ? "border-2 border-rose-600 bg-rose-50/40"
+                          : "border-rose-200 bg-rose-50/20 opacity-90"
+                        : isSelected
                         ? "border-orange-500 ring-2 ring-orange-500/20 bg-orange-50/10"
                         : "border-slate-200 hover:border-slate-300 bg-white"
                     }`}
@@ -805,11 +830,26 @@ export default function CustomerStorefrontPage() {
                         ) : (
                           <ShoppingBag className="w-10 h-10 text-slate-300" />
                         )}
-                        {prod.promo_code && (
-                          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-orange-500 text-white text-[10px] font-extrabold">
-                            Promo: {prod.promo_code}
+                        {soldOut ? (
+                          <span className="absolute top-2 left-2 px-2.5 py-1 rounded-md bg-rose-600 text-white text-[10px] font-black uppercase shadow-xs">
+                            🚫 Out of Stock (0 pcs)
                           </span>
+                        ) : (
+                          prod.promo_code && (
+                            <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-orange-500 text-white text-[10px] font-extrabold">
+                              Promo: {prod.promo_code}
+                            </span>
+                          )
                         )}
+                        <span
+                          className={`absolute bottom-2 right-2 px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                            soldOut
+                              ? "bg-rose-600 text-white"
+                              : "bg-slate-900/80 text-white"
+                          }`}
+                        >
+                          {soldOut ? "0 Left" : `Stock: ${prodStock} pcs`}
+                        </span>
                       </div>
                       <h3 className="font-extrabold text-sm text-slate-900">{prod.name}</h3>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -819,25 +859,33 @@ export default function CustomerStorefrontPage() {
                     </div>
 
                     <div className="pt-3 mt-3 border-t border-slate-100 space-y-2">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-sm font-black text-orange-600">
-                          {formatMoney(effective)}
-                        </span>
-                        {regular > effective && (
-                          <span className="text-[11px] text-slate-400 line-through">
-                            {formatMoney(regular)}
+                      <div className="flex items-baseline justify-between">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-sm font-black text-orange-600">
+                            {formatMoney(effective)}
                           </span>
-                        )}
+                          {regular > effective && (
+                            <span className="text-[11px] text-slate-400 line-through">
+                              {formatMoney(regular)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <button
                         type="button"
                         className={`w-full py-2 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-                          isSelected
+                          soldOut
+                            ? "bg-rose-600 text-white"
+                            : isSelected
                             ? "bg-orange-500 text-white"
                             : "border border-orange-200 text-orange-600 hover:bg-orange-50"
                         }`}
                       >
-                        {isSelected ? "✓ Selected for Order" : "Select Item"}
+                        {soldOut
+                          ? "🚫 Out of Stock"
+                          : isSelected
+                          ? "✓ Selected for Order"
+                          : "Select Item"}
                       </button>
                     </div>
                   </div>
@@ -891,50 +939,91 @@ export default function CustomerStorefrontPage() {
                 Order Review &amp; Stock Specifications
               </h2>
 
-              {activeProduct && !customOrderMode && (
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    {activeProduct.image_url ? (
-                      <img
-                        src={activeProduct.image_url}
-                        alt={activeProduct.name}
-                        className="w-12 h-12 rounded-lg object-cover border border-slate-200"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-lg bg-slate-200 flex items-center justify-center">
-                        <ShoppingBag className="w-5 h-5 text-slate-500" />
+              {!activeProduct && !customOrderMode ? (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900">
+                  Please click on a product above to select it for your order.
+                </div>
+              ) : (
+                activeProduct &&
+                !customOrderMode && (
+                  <div
+                    className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+                      hasStockError
+                        ? "bg-rose-50 border-rose-400"
+                        : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {activeProduct.image_url ? (
+                        <img
+                          src={activeProduct.image_url}
+                          alt={activeProduct.name}
+                          className="w-12 h-12 rounded-lg object-cover border border-slate-200"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-slate-200 flex items-center justify-center">
+                          <ShoppingBag className="w-5 h-5 text-slate-500" />
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-sm font-extrabold text-slate-900">
+                          {activeProduct.name}
+                        </h3>
+                        <p
+                          className={`text-[11px] font-bold ${
+                            hasStockError ? "text-rose-600" : "text-slate-500"
+                          }`}
+                        >
+                          Code: {activeProduct.sku} •{" "}
+                          {availableStock <= 0
+                            ? "🚫 OUT OF STOCK (0 pcs)"
+                            : `In Stock: ${availableStock} pcs`}
+                        </p>
+                        <p className="text-xs font-extrabold text-orange-600">
+                          {formatMoney(unitPrice)}
+                        </p>
                       </div>
-                    )}
-                    <div>
-                      <h3 className="text-sm font-extrabold text-slate-900">
-                        {activeProduct.name}
-                      </h3>
-                      <p className="text-[11px] text-slate-500">
-                        Code: {activeProduct.sku} • In Stock: {activeProduct.stock} pcs
-                      </p>
-                      <p className="text-xs font-extrabold text-orange-600">
-                        {formatMoney(unitPrice)}
-                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-slate-500 font-bold mr-1">Qty:</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                        className="w-7 h-7 rounded-lg border border-slate-300 bg-white font-bold cursor-pointer"
+                      >
+                        -
+                      </button>
+                      <span className="w-8 text-center font-extrabold">{quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity(quantity + 1)}
+                        className="w-7 h-7 rounded-lg border border-slate-300 bg-white font-bold cursor-pointer"
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
+                )
+              )}
 
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <span className="text-slate-500 font-bold mr-1">Qty:</span>
-                    <button
-                      type="button"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      className="w-7 h-7 rounded-lg border border-slate-300 bg-white font-bold cursor-pointer"
-                    >
-                      -
-                    </button>
-                    <span className="w-8 text-center font-extrabold">{quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => setQuantity(quantity + 1)}
-                      className="w-7 h-7 rounded-lg border border-slate-300 bg-white font-bold cursor-pointer"
-                    >
-                      +
-                    </button>
+              {/* RED OUT-OF-STOCK WARNING BANNER */}
+              {hasStockError && (
+                <div className="p-4 rounded-2xl bg-rose-600 text-white flex items-center gap-3 shadow-md">
+                  <div className="w-10 h-10 rounded-full bg-white text-rose-600 flex items-center justify-center shrink-0 font-black">
+                    <Ban className="w-6 h-6" />
+                  </div>
+                  <div className="text-xs">
+                    <div className="text-sm font-black uppercase">
+                      {isOutOfStock
+                        ? `OUT OF STOCK — "${activeProduct?.name}" IS SOLD OUT!`
+                        : `INSUFFICIENT STOCK — ONLY ${availableStock} PCS AVAILABLE!`}
+                    </div>
+                    <p className="text-rose-100 mt-0.5">
+                      {isOutOfStock
+                        ? "This item currently has 0 pieces in warehouse stock. Please select another product above."
+                        : `You entered ${quantity} pcs, but only ${availableStock} pcs are available in stock. Please reduce your quantity to ${availableStock} or less.`}
+                    </p>
                   </div>
                 </div>
               )}
@@ -997,10 +1086,13 @@ export default function CustomerStorefrontPage() {
                   <input
                     type="number"
                     min={1}
-                    max={activeProduct?.stock || 999}
                     value={quantity}
                     onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-extrabold text-slate-900"
+                    className={`w-full px-3 py-2 rounded-xl border font-extrabold ${
+                      hasStockError
+                        ? "border-rose-600 bg-rose-50 text-rose-700"
+                        : "border-slate-300 text-slate-900"
+                    }`}
                   />
                 </div>
               </div>
@@ -1126,7 +1218,7 @@ export default function CustomerStorefrontPage() {
             </div>
           </div>
 
-          {/* RIGHT 5 COLUMNS: Railway-Style Payment Selector + Promo + Bill Summary */}
+          {/* RIGHT 5 COLUMNS: Payment Selector + Promo + Bill Summary + Instant Receipt Button */}
           <div className="lg:col-span-5 space-y-6">
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4 text-xs">
               <div className="flex items-center justify-between">
@@ -1213,10 +1305,9 @@ export default function CustomerStorefrontPage() {
                     Cash on Delivery Selected
                   </div>
                   <p className="text-[11px] text-emerald-800 leading-relaxed">
-                    No online payment required right now! You will pay{" "}
-                    <strong>{formatMoney(grandTotal)}</strong> (Product:{" "}
+                    You will pay <strong>{formatMoney(grandTotal)}</strong> (Product:{" "}
                     {formatMoney(subtotal - appliedPromoDiscount)} + Courier Delivery:{" "}
-                    {formatMoney(finalDeliveryFee)}) in cash to the courier delivery rider when you receive the parcel.
+                    {formatMoney(finalDeliveryFee)}) in cash to the delivery rider when you receive the parcel.
                   </p>
                 </div>
               )}
@@ -1269,22 +1360,6 @@ export default function CustomerStorefrontPage() {
                       ))}
                     </select>
                   )}
-
-                  {verifiedPaymentTrx ? (
-                    <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold flex items-center justify-between">
-                      <span>
-                        ✓ {verifiedProviderName} Verified (TrxID: {verifiedPaymentTrx})
-                      </span>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleOpenPaymentGatewayPopup}
-                      className="w-full py-3 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-extrabold text-xs shadow-md transition cursor-pointer"
-                    >
-                      Open {selectedWalletProvider} Payment Window ({formatMoney(grandTotal)}) →
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -1333,21 +1408,6 @@ export default function CustomerStorefrontPage() {
                       ))
                     )}
                   </select>
-
-                  {verifiedPaymentTrx ? (
-                    <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold">
-                      ✓ {verifiedProviderName} Verified (Ref: {verifiedPaymentTrx})
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleOpenPaymentGatewayPopup}
-                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow-md transition cursor-pointer"
-                    >
-                      Open {selectedBankProvider.split(" ")[0]} 3D-Secure Gateway (
-                      {formatMoney(grandTotal)}) →
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -1413,8 +1473,14 @@ export default function CustomerStorefrontPage() {
               </div>
             </div>
 
-            {/* Special Notes & Final Submit Button */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4 text-xs">
+            {/* Special Notes & Final Action Box (Turns RED if Out of Stock!) */}
+            <div
+              className={`rounded-2xl p-6 border shadow-xs space-y-4 text-xs ${
+                hasStockError
+                  ? "bg-rose-50 border-2 border-rose-600"
+                  : "bg-white border-slate-200"
+              }`}
+            >
               <div>
                 <label className="block font-extrabold text-slate-800 mb-1">
                   Special notes <span className="text-slate-400 font-normal">(Optional)</span>
@@ -1424,7 +1490,7 @@ export default function CustomerStorefrontPage() {
                   value={customerNotes}
                   onChange={(e) => setCustomerNotes(e.target.value)}
                   placeholder="Any special delivery instruction..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white"
                 />
               </div>
 
@@ -1440,7 +1506,28 @@ export default function CustomerStorefrontPage() {
                 </span>
               </label>
 
-              {paymentCategory === "cod" ? (
+              {/* If Out of Stock or Exceeding Stock -> Show Red Circle & Disabled Red Button */}
+              {hasStockError ? (
+                <div className="p-4 rounded-xl bg-rose-600 text-white text-center space-y-1 font-extrabold">
+                  <div className="text-sm flex items-center justify-center gap-2">
+                    <Ban className="w-5 h-5" />
+                    {isOutOfStock
+                      ? "🚫 OUT OF STOCK — CANNOT PLACE ORDER"
+                      : `🚫 ONLY ${availableStock} PCS IN STOCK`}
+                  </div>
+                  <p className="text-[11px] text-rose-100 font-normal">
+                    Please choose an in-stock product or adjust quantity.
+                  </p>
+                </div>
+              ) : !activeProduct && !customOrderMode ? (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-3.5 rounded-xl bg-slate-300 text-slate-600 font-black text-sm cursor-not-allowed"
+                >
+                  Select a Product Above to Order
+                </button>
+              ) : paymentCategory === "cod" ? (
                 <button
                   type="button"
                   disabled={submittingOrder || !confirmSpecsChecked}
@@ -1451,7 +1538,7 @@ export default function CustomerStorefrontPage() {
                 >
                   {submittingOrder
                     ? "Placing Order..."
-                    : `Confirm Cash on Delivery Order (${formatMoney(grandTotal)})`}
+                    : `Order Now — Cash on Delivery (${formatMoney(grandTotal)})`}
                 </button>
               ) : (
                 <button
@@ -1460,19 +1547,151 @@ export default function CustomerStorefrontPage() {
                   onClick={handleOpenPaymentGatewayPopup}
                   className="w-full py-3.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-sm shadow-md transition cursor-pointer disabled:opacity-50"
                 >
-                  {verifiedPaymentTrx
-                    ? `✓ Payment Completed (${verifiedPaymentTrx})`
-                    : `Proceed to ${
-                        paymentCategory === "wallet"
-                          ? selectedWalletProvider
-                          : selectedBankProvider.split(" ")[0]
-                      } Payment (${formatMoney(grandTotal)})`}
+                  {`Pay & Confirm Order via ${
+                    paymentCategory === "wallet"
+                      ? selectedWalletProvider
+                      : selectedBankProvider.split(" ")[0]
+                  } (${formatMoney(grandTotal)})`}
                 </button>
+              )}
+
+              {/* Inline Bottom Receipt Access Button (So User Can Re-Open / Download Receipt Right at the Bottom!) */}
+              {confirmedOrderReceipt && (
+                <div className="p-4 rounded-xl bg-emerald-950 text-white space-y-2.5 border border-emerald-700">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-emerald-300">
+                      ✓ Last Order Confirmed: {confirmedOrderReceipt.order_id}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowReceiptPopupModal(true)}
+                      className="text-[11px] underline text-white font-bold cursor-pointer"
+                    >
+                      Open Receipt Popup
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        printIsolatedOrderSlip(confirmedOrderReceipt, symbol)
+                      }
+                      className="py-2 px-3 rounded-lg bg-white text-slate-900 font-extrabold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadOfficialOrderReceipt(confirmedOrderReceipt, symbol)
+                      }
+                      className="py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download Receipt
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
         </div>
       </main>
+
+      {/* =====================================================================
+          INSTANT CENTERED RECEIPT POPUP MODAL (Appears Automatically After Order!)
+         ===================================================================== */}
+      {showReceiptPopupModal && confirmedOrderReceipt && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200">
+            <div className="px-6 py-5 bg-emerald-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
+                <div>
+                  <h3 className="text-lg font-black">
+                    Order Confirmed! ({confirmedOrderReceipt.order_id})
+                  </h3>
+                  <p className="text-xs text-emerald-200">
+                    Your official receipt is ready to Print or Save as PDF
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReceiptPopupModal(false)}
+                className="text-emerald-200 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-slate-500 font-semibold">Customer Name &amp; Phone:</span>
+                  <span className="font-extrabold text-slate-900">
+                    {confirmedOrderReceipt.customer} ({confirmedOrderReceipt.customer_phone})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-slate-500 font-semibold">Ordered Item:</span>
+                  <span className="font-extrabold text-slate-900">
+                    {confirmedOrderReceipt.quantity}x {confirmedOrderReceipt.product_name} (Size:{" "}
+                    {confirmedOrderReceipt.selected_size}, Color:{" "}
+                    {confirmedOrderReceipt.selected_color})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-slate-500 font-semibold">Payment Status:</span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold">
+                    {confirmedOrderReceipt.payment_status === "Paid"
+                      ? `✓ PAID (${confirmedOrderReceipt.payment})`
+                      : "CASH ON DELIVERY (COD)"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-slate-500 font-semibold">Courier Delivery Cost:</span>
+                  <span className="font-bold text-slate-900">
+                    {confirmedOrderReceipt.delivery_fee === 0
+                      ? "FREE"
+                      : formatMoney(confirmedOrderReceipt.delivery_fee)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-1 text-sm">
+                  <span className="font-extrabold text-slate-900">Grand Total Bill:</span>
+                  <span className="text-base font-black text-emerald-700">
+                    {formatMoney(confirmedOrderReceipt.amount)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => printIsolatedOrderSlip(confirmedOrderReceipt, symbol)}
+                  className="py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" /> Print / Save as PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadOfficialOrderReceipt(confirmedOrderReceipt, symbol)}
+                  className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" /> Download Invoice File
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowReceiptPopupModal(false)}
+                className="w-full py-2.5 rounded-xl border border-slate-300 font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                Close &amp; Start New Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* BANGLADESH RAILWAY STYLE OFFICIAL PAYMENT POPUP */}
       {showGatewayPopup && (

@@ -620,6 +620,196 @@ export default function AnalyticsPnLPage() {
     triggerToast("Full 12-column P&L financial statement exported to CSV!");
   };
 
+  // Dedicated Clean A4 Landscape Official P&L PDF / Print Generator (Zero Sidebar!)
+  const handlePrintOfficialPnLReport = () => {
+    const win = window.open("", "_blank", "width=1120,height=820");
+    if (!win) return;
+
+    const expenseRowsHtml = expensesByAccountRows
+      .map(
+        (r) => `
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${r.accountName}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;">${formatMoney(
+            r.amount
+          )}</td>
+        </tr>`
+      )
+      .join("");
+
+    const monthlyRowsHtml = [...monthlyData]
+      .reverse()
+      .map(
+        (r) => `
+        <tr>
+          <td style="padding:8px;border:1px solid #cbd5e1;font-weight:700;">${r.monthKey}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(r.totalSales)}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;">-${formatMoney(r.discounts)}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;">-${formatMoney(r.returns)}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(r.shipping)}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(r.tax)}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;font-weight:700;">${formatMoney(
+            r.income
+          )}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;">-${formatMoney(r.cogs)}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;font-weight:700;">${formatMoney(
+            r.grossProfit
+          )}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;">-${formatMoney(
+            r.operatingExpenses
+          )}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;font-weight:800;color:${
+            r.netProfit >= 0 ? "#047857" : "#be123c"
+          };">${formatMoney(r.netProfit)}</td>
+          <td style="padding:8px;border:1px solid #cbd5e1;font-weight:700;">${r.netMargin.toFixed(
+            2
+          )}%</td>
+        </tr>`
+      )
+      .join("");
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Official Financial P&L Statement — Synvora OS</title>
+          <style>
+            @page { size: A4 landscape; margin: 12mm; }
+            body { font-family: system-ui, -apple-system, sans-serif; color: #0f172a; margin: 0; padding: 20px; background: #ffffff; }
+            h1 { margin: 0; font-size: 20px; }
+            .sub { font-size: 12px; color: #475569; margin-top: 4px; }
+            .kpi-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin: 18px 0; }
+            .kpi-box { border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px; background: #f8fafc; }
+            .kpi-label { font-size: 11px; color: #64748b; }
+            .kpi-val { font-size: 14px; font-weight: 800; margin-top: 4px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
+            th { background: #0f172a; color: #ffffff; padding: 8px; text-align: left; border: 1px solid #0f172a; }
+            .section-title { font-size: 14px; font-weight: 800; margin-top: 22px; margin-bottom: 6px; }
+          </style>
+        </head>
+        <body>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0f172a;padding-bottom:12px;">
+            <div>
+              <h1>Official Financial Analytics &amp; Profit/Loss (P&amp;L) Statement</h1>
+              <div class="sub">Period: ${dateFrom} to ${dateTo} • Channel: ${selectedChannel} • Currency: ${code} (${symbol})</div>
+            </div>
+            <div style="text-align:right;font-size:12px;">
+              <strong>Generated:</strong> ${new Date().toLocaleDateString()}<br/>
+              <span>Synvora Commerce Accounting</span>
+            </div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-box"><div class="kpi-label">Total Sales</div><div class="kpi-val">${formatMoney(
+              totals.totalSales
+            )}</div></div>
+            <div class="kpi-box"><div class="kpi-label">Orders Count</div><div class="kpi-val">${
+              totals.ordersCount
+            }</div></div>
+            <div class="kpi-box"><div class="kpi-label">Avg Order Value</div><div class="kpi-val">${formatMoney(
+              totals.avgOrderValue
+            )}</div></div>
+            <div class="kpi-box"><div class="kpi-label">Net Income</div><div class="kpi-val">${formatMoney(
+              totals.income
+            )}</div></div>
+            <div class="kpi-box"><div class="kpi-label">Total Expenses</div><div class="kpi-val">${formatMoney(
+              totals.totalExpensesAll
+            )}</div></div>
+            <div class="kpi-box"><div class="kpi-label">Net Profit (Loss)</div><div class="kpi-val">${formatMoney(
+              totals.netProfit
+            )}</div></div>
+            <div class="kpi-box"><div class="kpi-label">Net Margin</div><div class="kpi-val">${totals.netMargin.toFixed(
+              2
+            )}%</div></div>
+          </div>
+
+          <div class="section-title">1. Month-over-Month Profit &amp; Loss (P&amp;L) Statement</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Total Sales</th>
+                <th>Discounts</th>
+                <th>Returns</th>
+                <th>Shipping</th>
+                <th>Tax</th>
+                <th>Income</th>
+                <th>COGS</th>
+                <th>Gross Profit</th>
+                <th>Operating Expenses</th>
+                <th>Net Profit (Loss)</th>
+                <th>Net Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${monthlyRowsHtml}
+              <tr style="background:#f1f5f9;font-weight:800;">
+                <td style="padding:8px;border:1px solid #cbd5e1;">Grand Total</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(
+                  totals.totalSales
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">-${formatMoney(
+                  totals.discounts
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">-${formatMoney(
+                  totals.returns
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(
+                  totals.shipping
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(
+                  totals.tax
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(
+                  totals.income
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">-${formatMoney(
+                  totals.cogs
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(
+                  totals.grossProfit
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">-${formatMoney(
+                  totals.operatingExpenses
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">${formatMoney(
+                  totals.netProfit
+                )}</td>
+                <td style="padding:8px;border:1px solid #cbd5e1;">${totals.netMargin.toFixed(
+                  2
+                )}%</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="section-title">2. Expenses Breakdown by Account</div>
+          <table style="max-width:520px;">
+            <thead>
+              <tr>
+                <th>Account Name</th>
+                <th style="text-align:right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${expenseRowsHtml}
+              <tr style="background:#f1f5f9;font-weight:800;">
+                <td style="padding:8px 12px;">Grand Total Expenses</td>
+                <td style="padding:8px 12px;text-align:right;">${formatMoney(
+                  expensesTableGrandTotal
+                )}</td>
+              </tr>
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => {
+      win.print();
+    }, 300);
+  };
+
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6 bg-slate-50/60 min-h-screen">
       {/* Toast Notification */}
@@ -663,11 +853,11 @@ export default function AnalyticsPnLPage() {
 
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={handlePrintOfficialPnLReport}
               className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
             >
               <Printer className="w-4 h-4" />
-              Print
+              Print / Save PDF
             </button>
 
             <button
