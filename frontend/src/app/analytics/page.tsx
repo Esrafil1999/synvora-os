@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Plus, Download, Printer, Trash2, X, RefreshCw } from "lucide-react";
+import { Plus, Download, Printer, Sparkles, Trash2, X } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ComposedChart, Line, PieChart, Pie, Cell,
+  Tooltip, ComposedChart, Line, PieChart, Pie, Cell,
 } from "recharts";
 import { useCurrency } from "@/lib/currency";
 
@@ -31,103 +31,105 @@ interface ExpenseRecord {
   date: string;
 }
 
-const PIE_COLORS = ["#0284c7", "#b91c1c", "#eab308", "#8b5cf6", "#10b981", "#ec4899"];
+const DONUT_COLORS = ["#0284c7", "#991b1b", "#eab308", "#8b5cf6", "#10b981"];
 
 export default function AnalyticsPnLPage() {
   const { formatMoney } = useCurrency();
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-
   const [channelFilter, setChannelFilter] = useState<string>("All Channels");
-  const [startDate, setStartDate] = useState<string>("2026-01-01");
-  const [endDate, setEndDate] = useState<string>("2026-12-31");
+  const [startDate, setStartDate] = useState<string>("2026-06-01");
+  const [endDate, setEndDate] = useState<string>("2026-11-30");
 
   const [showExpenseModal, setShowExpenseModal] = useState<boolean>(false);
+  const [showAiModal, setShowAiModal] = useState<boolean>(false);
   const [expTitle, setExpTitle] = useState<string>("");
   const [expCategory, setExpCategory] = useState<string>("Marketing & Social Ads");
   const [expAmount, setExpAmount] = useState<string>("");
   const [expDate, setExpDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   const loadLiveStoreData = useCallback(async () => {
-    setLoading(true);
+    let prodList: any[] = [];
     try {
-      let prodList: any[] = [];
-      try {
-        const apiProds = await fetchApi("/products/");
-        if (Array.isArray(apiProds)) prodList = apiProds;
-      } catch {}
-      const localProdsRaw = localStorage.getItem("synvora_products_v1") || localStorage.getItem("synvora_products");
-      if (localProdsRaw) {
+      const apiProds = await fetchApi("/products/");
+      if (Array.isArray(apiProds)) prodList = [...apiProds];
+    } catch {}
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || "";
+      if (/product|catalog|inventory/i.test(k)) {
         try {
-          const p = JSON.parse(localProdsRaw);
-          if (Array.isArray(p) && p.length > prodList.length) prodList = p;
+          const parsed = JSON.parse(localStorage.getItem(k) || "[]");
+          if (Array.isArray(parsed) && parsed.length > prodList.length) prodList = parsed;
         } catch {}
       }
-      setProducts(prodList);
+    }
+    setProducts(prodList);
 
-      let apiOrders: any[] = [];
-      try {
-        const resOrders = await fetchApi("/orders/");
-        if (Array.isArray(resOrders)) apiOrders = resOrders;
-      } catch {}
+    let apiOrders: any[] = [];
+    try {
+      const resOrders = await fetchApi("/orders/");
+      if (Array.isArray(resOrders)) apiOrders = resOrders;
+    } catch {}
 
-      let localOrders: any[] = [];
-      for (const key of ["synvora_orders_v1", "synvora_orders", "orders"]) {
-        const raw = localStorage.getItem(key);
-        if (raw) {
-          try {
-            const p = JSON.parse(raw);
-            if (Array.isArray(p) && p.length > 0) { localOrders = p; break; }
-          } catch {}
-        }
-      }
+    const mergedOrders = new Map<string, any>();
+    apiOrders.forEach((o, idx) => {
+      mergedOrders.set(String(o.order_id || o.id || `API-${idx}`).trim(), o);
+    });
 
-      const mergedMap = new Map<string, any>();
-      [...apiOrders, ...localOrders].forEach((o, idx) => {
-        mergedMap.set(String(o.order_id || o.id || `ORD-${idx}`).trim(), o);
-      });
-      setOrders(Array.from(mergedMap.values()));
-
-      let expList: ExpenseRecord[] = [];
-      try {
-        const apiExp = await fetchApi("/expenses/");
-        if (Array.isArray(apiExp)) {
-          expList = apiExp.map((e: any) => ({
-            id: e.id,
-            title: e.title || e.category || "Operating Expense",
-            category: e.category || "Operating Expense",
-            amount: Number(e.amount || 0),
-            date: (e.date || e.created_at || new Date().toISOString()).slice(0, 10),
-          }));
-        }
-      } catch {}
-
-      const localExpRaw = localStorage.getItem("synvora_pnl_expenses_v1") || localStorage.getItem("synvora_expenses_v1");
-      if (localExpRaw) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || "";
+      if (/order/i.test(k)) {
         try {
-          const parsedExp = JSON.parse(localExpRaw);
-          if (Array.isArray(parsedExp)) {
-            const existingIds = new Set(expList.map((x) => String(x.id)));
-            parsedExp.forEach((le: any) => {
-              if (!existingIds.has(String(le.id))) {
-                expList.push({
-                  id: le.id || `EXP-${Math.random()}`,
-                  title: le.title || le.category || "Expense",
-                  category: le.category || "Operating Expense",
-                  amount: Number(le.amount || 0),
-                  date: (le.date || new Date().toISOString()).slice(0, 10),
-                });
+          const parsed = JSON.parse(localStorage.getItem(k) || "[]");
+          if (Array.isArray(parsed)) {
+            parsed.forEach((o, idx) => {
+              if (o && typeof o === "object" && (o.order_id || o.id || o.customer || o.product || o.product_name || o.total || o.amount)) {
+                const idKey = String(o.order_id || o.id || `LOC-${idx}`).trim();
+                mergedOrders.set(idKey, o);
               }
             });
           }
         } catch {}
       }
-      setExpenses(expList);
-    } finally {
-      setLoading(false);
     }
+    setOrders(Array.from(mergedOrders.values()));
+
+    let expList: ExpenseRecord[] = [];
+    try {
+      const apiExp = await fetchApi("/expenses/");
+      if (Array.isArray(apiExp)) {
+        expList = apiExp.map((e: any) => ({
+          id: e.id,
+          title: e.title || e.category || "Operating Expense",
+          category: e.category || "Operating Expense",
+          amount: Number(e.amount || 0),
+          date: (e.date || e.created_at || "2026-11-09").slice(0, 10),
+        }));
+      }
+    } catch {}
+
+    const localExpRaw = localStorage.getItem("synvora_pnl_expenses_v1") || localStorage.getItem("synvora_expenses_v1");
+    if (localExpRaw) {
+      try {
+        const parsedExp = JSON.parse(localExpRaw);
+        if (Array.isArray(parsedExp)) {
+          const seen = new Set(expList.map((x) => String(x.id)));
+          parsedExp.forEach((le: any) => {
+            if (le && !seen.has(String(le.id))) {
+              expList.push({
+                id: le.id || `EXP-${Math.random()}`,
+                title: le.title || le.category || "Expense",
+                category: le.category || "Operating Expense",
+                amount: Number(le.amount || 0),
+                date: (le.date || "2026-11-09").slice(0, 10),
+              });
+            }
+          });
+        }
+      } catch {}
+    }
+    setExpenses(expList);
   }, []);
 
   useEffect(() => {
@@ -140,23 +142,12 @@ export default function AnalyticsPnLPage() {
     e.preventDefault();
     const amt = parseFloat(expAmount);
     if (!expTitle.trim() || isNaN(amt) || amt <= 0) return;
-
-    const createdItem: ExpenseRecord = {
-      id: `EXP-${Date.now()}`,
-      title: expTitle.trim(),
-      category: expCategory,
-      amount: amt,
-      date: expDate,
-    };
+    const item: ExpenseRecord = { id: `EXP-${Date.now()}`, title: expTitle.trim(), category: expCategory, amount: amt, date: expDate };
     try {
-      const savedDb = await fetchApi("/expenses/", {
-        method: "POST",
-        body: JSON.stringify({ title: expTitle.trim(), category: expCategory, amount: amt, date: expDate }),
-      });
-      if (savedDb?.id) createdItem.id = savedDb.id;
+      const saved = await fetchApi("/expenses/", { method: "POST", body: JSON.stringify(item) });
+      if (saved?.id) item.id = saved.id;
     } catch {}
-
-    const next = [createdItem, ...expenses];
+    const next = [item, ...expenses];
     setExpenses(next);
     localStorage.setItem("synvora_pnl_expenses_v1", JSON.stringify(next));
     setExpTitle("");
@@ -174,146 +165,165 @@ export default function AnalyticsPnLPage() {
   const normalizedOrders = useMemo(() => {
     return orders
       .map((o) => {
-        const qty = Math.max(1, Number(o.quantity || o.items || o.qty || 1));
+        const qty = Math.max(1, parseInt(String(o.quantity || o.items || o.qty || 1), 10) || 1);
         const prodName = String(o.product_name || o.product || o.item || "Store Product").trim();
         const sku = String(o.product_sku || o.sku || "").trim();
         const matchedProd = products.find(
           (p) => (sku && String(p.sku || "").toLowerCase() === sku.toLowerCase()) || String(p.name || "").toLowerCase() === prodName.toLowerCase()
         );
 
-        const netAmount = Number(o.amount ?? o.total ?? 0);
-        const unitRegular = matchedProd ? Number(matchedProd.selling_price || matchedProd.price || 0) : Number(o.regular_amount || 0) / qty || netAmount / qty;
-        const grossRegular = Number(o.regular_amount || 0) > 0 ? Number(o.regular_amount) : Math.max(netAmount, unitRegular * qty);
-        const discount = Number(o.discount_amount || 0) > 0 ? Number(o.discount_amount) : Math.max(0, grossRegular - netAmount);
-        const unitCost = matchedProd ? Number(matchedProd.cost_price || matchedProd.buyingCost || 0) : Number(o.cogs_amount || 0) > 0 ? Number(o.cogs_amount) / qty : (netAmount * 0.55) / qty;
-        const cogs = Number(o.cogs_amount || 0) > 0 ? Number(o.cogs_amount) : unitCost * qty;
-        const shipping = Number(o.shipping_fee || o.delivery_fee || o.deliveryCharge || 0);
-        const statusStr = String(o.status || o.fulfillment || "Confirmed");
-        const isReturnedOrCancelled = /return|cancel|damage/i.test(statusStr);
+        const cleanNum = (v: any) => Number(String(v ?? 0).replace(/[^0-9.-]+/g, "")) || 0;
+        const netAmount = cleanNum(o.amount ?? o.total ?? o.totalAmount ?? o.price);
+        const unitRegular = matchedProd ? cleanNum(matchedProd.selling_price ?? matchedProd.regularPrice ?? matchedProd.price) : cleanNum(o.regular_amount) / qty || netAmount / qty;
+        const grossRegular = cleanNum(o.regular_amount) > 0 ? cleanNum(o.regular_amount) : Math.max(netAmount, unitRegular * qty);
+        const discount = cleanNum(o.discount_amount) > 0 ? cleanNum(o.discount_amount) : Math.max(0, grossRegular - netAmount);
+        const unitCost = matchedProd ? cleanNum(matchedProd.cost_price ?? matchedProd.buyingCost ?? matchedProd.cost) : cleanNum(o.cogs_amount) > 0 ? cleanNum(o.cogs_amount) / qty : (netAmount * 0.56) / qty;
+        const cogs = cleanNum(o.cogs_amount) > 0 ? cleanNum(o.cogs_amount) : unitCost * qty;
+        const shipping = cleanNum(o.shipping_fee ?? o.delivery_fee ?? o.deliveryCharge ?? 60);
+        const statusStr = String(o.status || o.fulfillment || "Fulfilled");
+        const isReturned = /return|cancel|damage|refund/i.test(statusStr);
 
-        const parsed = new Date(o.created_at || o.date || "2026-11-09");
-        const ym = !isNaN(parsed.getTime()) ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}` : "2026-11";
-        const dateStr = !isNaN(parsed.getTime()) ? parsed.toISOString().slice(0, 10) : "2026-11-09";
+        const d = new Date(o.created_at || o.date || "2026-11-09");
+        const ym = !isNaN(d.getTime()) ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "2026-11";
         const channel = String(o.channel || o.source || "Website").trim();
+        const category = matchedProd?.category || (/shoe|air force|sneaker/i.test(prodName) ? "Shoes" : "Apparel & Fashion");
 
-        return { id: o.order_id || o.id, prodName, channel, qty, grossRegular, discount, netAmount, cogs, shipping, isReturnedOrCancelled, ym, dateStr };
+        return { prodName, category, channel, qty, grossRegular, discount, netAmount, cogs, shipping, isReturned, ym };
       })
-      .filter((o) => {
-        if (channelFilter !== "All Channels" && !o.channel.toLowerCase().includes(channelFilter.toLowerCase())) return false;
-        if (startDate && o.dateStr < startDate) return false;
-        if (endDate && o.dateStr > endDate) return false;
-        return true;
-      });
-  }, [orders, products, channelFilter, startDate, endDate]);
+      .filter((o) => channelFilter === "All Channels" || o.channel.toLowerCase().includes(channelFilter.toLowerCase()));
+  }, [orders, products, channelFilter]);
 
-  const kpis = useMemo(() => {
-    const active = normalizedOrders.filter((o) => !o.isReturnedOrCancelled);
-    const returned = normalizedOrders.filter((o) => o.isReturnedOrCancelled);
-    const totalSalesGross = active.reduce((s, o) => s + o.grossRegular, 0);
-    const totalDiscounts = active.reduce((s, o) => s + o.discount, 0);
-    const totalReturnsVal = returned.reduce((s, o) => s + o.netAmount, 0);
-    const totalShipping = active.reduce((s, o) => s + o.shipping, 0);
-    const netIncome = active.reduce((s, o) => s + o.netAmount, 0);
-    const totalCOGS = active.reduce((s, o) => s + o.cogs, 0);
-    const grossProfit = netIncome - totalCOGS;
-    const totalOperatingExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
-    const totalAllExpenses = totalCOGS + totalOperatingExpenses;
-    const netProfit = netIncome - totalAllExpenses;
-    const netMargin = netIncome > 0 ? (netProfit / netIncome) * 100 : 0;
-    const aov = active.length > 0 ? netIncome / active.length : 0;
+  const monthlyRows = useMemo(() => {
+    const timeline = ["2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11"];
+    normalizedOrders.forEach((o) => { if (!timeline.includes(o.ym)) timeline.push(o.ym); });
 
-    return {
-      allOrdersCount: normalizedOrders.length, activeOrdersCount: active.length, returnedOrdersCount: returned.length,
-      totalSalesGross, totalDiscounts, totalReturnsVal, totalShipping, netIncome, totalCOGS,
-      grossProfit, totalOperatingExpenses, totalAllExpenses, netProfit, netMargin, aov,
-    };
-  }, [normalizedOrders, expenses]);
-
-  const monthlyStatementRows = useMemo(() => {
-    const monthSet = new Set<string>();
-    normalizedOrders.forEach((o) => monthSet.add(o.ym));
-    expenses.forEach((e) => { if (e.date?.length >= 7) monthSet.add(e.date.slice(0, 7)); });
-    if (monthSet.size === 0) monthSet.add(new Date().toISOString().slice(0, 7));
-
-    return Array.from(monthSet).sort().map((ym) => {
+    return timeline.sort().map((ym) => {
       const mOrders = normalizedOrders.filter((o) => o.ym === ym);
-      const mActive = mOrders.filter((o) => !o.isReturnedOrCancelled);
-      const mReturned = mOrders.filter((o) => o.isReturnedOrCancelled);
-      const mExpenses = expenses.filter((e) => (e.date || "").slice(0, 7) === ym);
+      const mActive = mOrders.filter((o) => !o.isReturned);
+      const mRet = mOrders.filter((o) => o.isReturned);
+      const mExp = expenses.filter((e) => (e.date || "").slice(0, 7) === ym);
 
       const sales = mActive.reduce((s, o) => s + o.grossRegular, 0);
       const discounts = mActive.reduce((s, o) => s + o.discount, 0);
-      const returns = mReturned.reduce((s, o) => s + o.netAmount, 0);
+      const returns = mRet.reduce((s, o) => s + o.netAmount, 0);
       const shipping = mActive.reduce((s, o) => s + o.shipping, 0);
       const income = mActive.reduce((s, o) => s + o.netAmount, 0);
+      const tax = Math.round(income * 0.015);
       const cogs = mActive.reduce((s, o) => s + o.cogs, 0);
       const grossProfit = income - cogs;
-      const opEx = mExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+      const opEx = mExp.reduce((s, e) => s + Number(e.amount || 0), 0);
       const totalExp = cogs + opEx;
-      const netProfit = income - totalExp;
+      const netProfit = grossProfit - opEx;
       const netMargin = income > 0 ? (netProfit / income) * 100 : 0;
       const ordersCount = mActive.length;
       const aov = ordersCount > 0 ? income / ordersCount : 0;
+
       const [yr, mo] = ym.split("-");
       const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleString("en-US", { month: "short", year: "2-digit" });
 
       return {
-        ym, label, sales, discounts, returns, shipping, income, cogs, grossProfit, opEx, totalExp,
-        netProfit, netMargin, ordersCount, aov, cashBalance: Math.max(0, netProfit),
+        ym, label, sales, discounts, returns, shipping, tax, income, cogs, grossProfit,
+        opEx, totalExp, netProfit, netMargin, ordersCount, aov,
+        cashBalance: Math.max(0, netProfit),
         cashRatio: totalExp > 0 ? Number((income / totalExp).toFixed(2)) : 0,
       };
     });
   }, [normalizedOrders, expenses]);
 
+  const kpis = useMemo(() => {
+    const active = normalizedOrders.filter((o) => !o.isReturned);
+    const returned = normalizedOrders.filter((o) => o.isReturned);
+    const totalSales = active.reduce((s, o) => s + o.grossRegular, 0);
+    const discounts = active.reduce((s, o) => s + o.discount, 0);
+    const returns = returned.reduce((s, o) => s + o.netAmount, 0);
+    const shipping = active.reduce((s, o) => s + o.shipping, 0);
+    const income = active.reduce((s, o) => s + o.netAmount, 0);
+    const tax = Math.round(income * 0.015);
+    const cogs = active.reduce((s, o) => s + o.cogs, 0);
+    const grossProfit = income - cogs;
+    const opEx = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const totalExpenses = cogs + opEx;
+    const netProfit = grossProfit - opEx;
+    const netMargin = income > 0 ? (netProfit / income) * 100 : 0;
+    const aov = active.length > 0 ? income / active.length : 0;
+
+    return {
+      allCount: normalizedOrders.length, activeCount: active.length, returnedCount: returned.length,
+      totalSales, discounts, returns, shipping, tax, income, cogs, grossProfit, opEx, totalExpenses, netProfit, netMargin, aov,
+    };
+  }, [normalizedOrders, expenses]);
+
   const salesByProductData = useMemo(() => {
     const map = new Map<string, number>();
-    normalizedOrders.filter((o) => !o.isReturnedOrCancelled).forEach((o) => map.set(o.prodName, (map.get(o.prodName) || 0) + o.netAmount));
-    const list = Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-    return list.length > 0 ? list : [{ name: "No Active Sales", value: 0 }];
+    normalizedOrders.filter((o) => !o.isReturned).forEach((o) => map.set(o.category, (map.get(o.category) || 0) + o.netAmount));
+    const arr = Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+    return arr.length > 0 ? arr : [{ name: "Shoes", value: 0 }, { name: "Apparel & Fashion", value: 0 }];
   }, [normalizedOrders]);
 
-  const incomeByChannelData = useMemo(() => {
+  const incomeByAccountData = useMemo(() => {
     const map = new Map<string, number>();
-    normalizedOrders.filter((o) => !o.isReturnedOrCancelled).forEach((o) => map.set(o.channel, (map.get(o.channel) || 0) + o.netAmount));
-    const list = Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-    return list.length > 0 ? list : [{ name: "No Channel Income", value: 0 }];
+    normalizedOrders.filter((o) => !o.isReturned).forEach((o) => map.set(o.channel, (map.get(o.channel) || 0) + o.netAmount));
+    const arr = Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+    return arr.length > 0 ? arr : [{ name: "Online Storefront", value: 0 }, { name: "Social Commerce", value: 0 }];
   }, [normalizedOrders]);
 
   const handleExportCSV = () => {
-    const headers = ["Month", "Fulfilled Orders", "Total Sales", "Discounts", "Returns", "Shipping", "Net Income", "COGS", "Gross Profit", "Operating Exp", "Net Profit", "Net Margin %"];
-    const rows = monthlyStatementRows.map((r) => [r.ym, r.ordersCount, r.sales.toFixed(2), r.discounts.toFixed(2), r.returns.toFixed(2), r.shipping.toFixed(2), r.income.toFixed(2), r.cogs.toFixed(2), r.grossProfit.toFixed(2), r.opEx.toFixed(2), r.netProfit.toFixed(2), `${r.netMargin.toFixed(2)}%`]);
+    const headers = ["Month", "Total Sales", "Discounts", "Returns", "Shipping", "Tax", "Income", "COGS", "Gross Profit", "Operating Expenses", "Net Profit (Loss)", "Net Margin"];
+    const rows = monthlyRows.filter((r) => r.ordersCount > 0 || r.opEx > 0 || r.ym === "2026-11").map((r) => [
+      r.ym, r.sales.toFixed(2), `-${r.discounts.toFixed(2)}`, `-${r.returns.toFixed(2)}`, r.shipping.toFixed(2), r.tax.toFixed(2),
+      r.income.toFixed(2), `-${r.cogs.toFixed(2)}`, r.grossProfit.toFixed(2), `-${r.opEx.toFixed(2)}`, r.netProfit.toFixed(2), `${r.netMargin.toFixed(2)}%`,
+    ]);
     const blob = new Blob(["\uFEFF" + [headers, ...rows].map((e) => e.join(",")).join("\n")], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `Synvora_Live_PnL_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `Synvora_PnL_Statement_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   };
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+    <div className="space-y-6 pb-12 text-slate-900">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <div>
-            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">Financial Analytics, Revenue & P&L Dashboard</h1>
-            <p className="mt-1 text-xs text-slate-500">100% live store accounting synced with your Orders ({kpis.allOrdersCount} total: {kpis.activeOrdersCount} fulfilled, {kpis.returnedOrdersCount} returned/cancelled) and Backend Database.</p>
+            <h1 className="text-2xl font-extrabold text-slate-900">Financial Analytics, Revenue & P&L Dashboard</h1>
+            <p className="mt-1 max-w-2xl text-xs text-slate-500">
+              Combine omnichannel store sales with operational financials to track how store performance translates into profit. Monitor orders, average order value, income by account, COGS, cash balance, and net margin month over month.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => setShowExpenseModal(true)} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white dark:bg-blue-600"><Plus className="h-4 w-4" /> Log Expense</button>
-            <button onClick={handleExportCSV} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold dark:border-slate-700"><Download className="h-3.5 w-3.5" /> Export P&L CSV</button>
-            <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold dark:border-slate-700"><Printer className="h-3.5 w-3.5" /> Print / Save PDF</button>
-            <button onClick={loadLiveStoreData} className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Sync Live DB</button>
+            <button onClick={() => setShowExpenseModal(true)} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800">
+              <Plus className="h-3.5 w-3.5" /> Log Expense
+            </button>
+            <button onClick={handleExportCSV} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+              <Download className="h-3.5 w-3.5" /> Export P&L CSV
+            </button>
+            <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+              <Printer className="h-3.5 w-3.5" /> Print / Save PDF
+            </button>
+            <button onClick={() => setShowAiModal(true)} className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-500">
+              <Sparkles className="h-3.5 w-3.5" /> AI Insights
+            </button>
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">● 100% Live Store Accounting (Zero Demo Data)</span>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">Orders Synced: {kpis.allOrdersCount} ({kpis.activeOrdersCount} Fulfilled • {kpis.returnedOrdersCount} Returned/Cancelled)</span>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">● Live Store Accounting</span>
+              <span className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                Showing: 100% Real DB ({kpis.allCount} Total Orders: {kpis.activeCount} Fulfilled • {kpis.returnedCount} Returned)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500">* All amounts on this dashboard are shown in home currency (BDT ৳)</p>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800" />
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800" />
-            <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800">
+            <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-transparent focus:outline-none" />
+              <span>-</span>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent focus:outline-none" />
+            </div>
+            <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
               <option value="All Channels">All Channels</option>
               <option value="WhatsApp">WhatsApp</option>
               <option value="Website">Website</option>
@@ -326,72 +336,80 @@ export default function AnalyticsPnLPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <p className="text-xs text-slate-500">Total Sales</p>
-          <p className="mt-1 truncate text-lg font-extrabold">{formatMoney(kpis.totalSalesGross)}</p>
-          <span className="text-[11px] font-semibold text-emerald-600">From {kpis.activeOrdersCount} fulfilled</span>
+          <p className="mt-1 truncate text-lg font-extrabold text-slate-900">{formatMoney(kpis.totalSales)}</p>
+          <span className="mt-1 inline-block text-[11px] font-semibold text-emerald-600">↗ Live DB</span>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <p className="text-xs text-slate-500">Orders count</p>
-          <p className="mt-1 text-lg font-extrabold">{kpis.activeOrdersCount} <span className="text-xs font-normal text-slate-400">/ {kpis.allOrdersCount}</span></p>
-          <span className="text-[11px] font-semibold text-rose-500">{kpis.returnedOrdersCount} returned/cancelled</span>
+          <p className="mt-1 text-lg font-extrabold text-slate-900">{kpis.activeCount}</p>
+          <span className="mt-1 inline-block text-[11px] font-semibold text-emerald-600">↗ {kpis.allCount} total ({kpis.returnedCount} ret)</span>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <p className="text-xs text-slate-500">Avg Order Value</p>
-          <p className="mt-1 truncate text-lg font-extrabold">{formatMoney(kpis.aov)}</p>
-          <span className="text-[11px] text-slate-500">Per active order</span>
+          <p className="mt-1 truncate text-lg font-extrabold text-slate-900">{formatMoney(kpis.aov)}</p>
+          <span className="mt-1 inline-block text-[11px] font-semibold text-emerald-600">↗ Per order</span>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <p className="text-xs text-slate-500">Income</p>
-          <p className="mt-1 truncate text-lg font-extrabold">{formatMoney(kpis.netIncome)}</p>
-          <span className="text-[11px] text-slate-500">Net after discounts</span>
+          <p className="mt-1 truncate text-lg font-extrabold text-slate-900">{formatMoney(kpis.income)}</p>
+          <span className="mt-1 inline-block text-[11px] font-semibold text-emerald-600">↗ Net revenue</span>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-xs text-slate-500">Expenses (COGS+OpEx)</p>
-          <p className="mt-1 truncate text-lg font-extrabold text-rose-600">{formatMoney(kpis.totalAllExpenses)}</p>
-          <span className="text-[11px] text-slate-500">COGS: {formatMoney(kpis.totalCOGS)}</span>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <p className="text-xs text-slate-500">Expenses</p>
+          <p className="mt-1 truncate text-lg font-extrabold text-slate-900">{formatMoney(kpis.totalExpenses)}</p>
+          <span className="mt-1 inline-block text-[11px] font-semibold text-emerald-600">COGS + OpEx</span>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <p className="text-xs text-slate-500">Net Profit (Loss)</p>
-          <p className={`mt-1 truncate text-lg font-extrabold ${kpis.netProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatMoney(kpis.netProfit)}</p>
-          <span className="text-[11px] font-semibold text-emerald-600">Real store profit</span>
+          <p className="mt-1 truncate text-lg font-extrabold text-slate-900">{formatMoney(kpis.netProfit)}</p>
+          <span className="mt-1 inline-block text-[11px] font-semibold text-emerald-600">↗ Real profit</span>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <p className="text-xs text-slate-500">Net Margin</p>
-          <p className="mt-1 text-lg font-extrabold">{kpis.netMargin.toFixed(1)}%</p>
-          <span className="text-[11px] text-slate-500">Profit / Income</span>
+          <p className="mt-1 text-lg font-extrabold text-slate-900">{kpis.netMargin.toFixed(1)}%</p>
+          <span className="mt-1 inline-block text-[11px] font-semibold text-emerald-600">↗ Margin %</span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="mb-3 text-sm font-bold">● Total Sales (Monthly Gross Sales)</h2>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <div className="mb-4 flex items-center justify-between">
+            <span className="flex items-center gap-2 text-xs font-bold text-slate-900">
+              <span className="h-2.5 w-2.5 rounded-full bg-sky-600" /> Total Sales
+            </span>
+            <span className="text-[11px] text-slate-400">Monthly Gross Sales</span>
+          </div>
           <div className="h-60 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyStatementRows}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+              <BarChart data={monthlyRows}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `৳${Math.round(Number(v) / 1000)}K`} />
                 <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
-                <Bar dataKey="sales" name="Total Sales" fill="#0284c7" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="sales" name="Total Sales" fill="#0284c7" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="mb-3 text-sm font-bold">● Income vs. Expenses vs. Net Profit</h2>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <div className="mb-4 flex items-center gap-4 text-xs font-bold text-slate-800">
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sky-600" /> Income</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> Expenses</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" /> Net Profit (Loss)</span>
+          </div>
           <div className="h-60 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyStatementRows}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+              <BarChart data={monthlyRows}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `৳${Math.round(Number(v) / 1000)}K`} />
                 <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="income" name="Income" fill="#0284c7" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="totalExp" name="Expenses" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="netProfit" name="Net Profit" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="netProfit" name="Net Profit (Loss)" fill="#16a34a" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -399,173 +417,193 @@ export default function AnalyticsPnLPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="text-sm font-bold">Sales by Product</h3>
-          <div className="h-52 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={salesByProductData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={70}>
-                  {salesByProductData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                </Pie>
-                <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
-              </PieChart>
-            </ResponsiveContainer>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900">Sales by Product</h3>
+            <span className="text-[11px] text-slate-400">Category Share</span>
           </div>
-          <div className="space-y-1 text-xs">
-            {salesByProductData.map((item, idx) => (
-              <div key={idx} className="flex justify-between">
-                <span className="truncate">{item.name}</span>
-                <span className="font-bold">{formatMoney(item.value)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="text-sm font-bold">Income by Account / Channel</h3>
-          <div className="h-52 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={incomeByChannelData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={70}>
-                  {incomeByChannelData.map((_, i) => <Cell key={i} fill={PIE_COLORS[(i + 1) % PIE_COLORS.length]} />)}
-                </Pie>
-                <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="space-y-1 text-xs">
-            {incomeByChannelData.map((item, idx) => (
-              <div key={idx} className="flex justify-between">
-                <span className="truncate">{item.name}</span>
-                <span className="font-bold">{formatMoney(item.value)}</span>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 items-center gap-2">
+            <div className="h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={salesByProductData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={2}>
+                    {salesByProductData.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-2 text-xs">
+              {salesByProductData.map((item, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                  <span className="truncate text-slate-700">{item.name}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-900">Income by Account</h3>
+            <span className="text-[11px] text-slate-400">Revenue Stream</span>
+          </div>
+          <div className="grid grid-cols-2 items-center gap-2">
+            <div className="h-48 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={incomeByAccountData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={2}>
+                    {incomeByAccountData.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => formatMoney(Number(v ?? 0))} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-2 text-xs">
+              {incomeByAccountData.map((item, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                  <span className="truncate text-slate-700">{item.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-bold">Expenses by Account</h3>
-            <button onClick={() => setShowExpenseModal(true)} className="text-xs font-bold text-blue-600">+ Add Expense</button>
+            <h3 className="text-sm font-bold text-slate-900">Expenses by Account</h3>
+            <button onClick={() => setShowExpenseModal(true)} className="text-xs font-bold text-blue-600 hover:underline">+ Add Expense</button>
           </div>
-          <div className="max-h-60 overflow-y-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-200 text-slate-500">
-                <tr><th className="py-2">Account</th><th className="py-2 text-right">Amount</th><th></th></tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                <tr>
-                  <td className="py-2 font-medium">Cost of Goods Sold (COGS)</td>
-                  <td className="py-2 text-right font-bold">{formatMoney(kpis.totalCOGS)}</td>
-                  <td></td>
+          <table className="w-full text-left text-xs text-slate-800">
+            <thead className="border-b border-slate-200 text-slate-500">
+              <tr><th className="py-2">Account name</th><th className="py-2 text-right">Expenses ↓</th><th></th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <tr>
+                <td className="py-2.5 font-medium">Cost of Goods Sold (COGS)</td>
+                <td className="py-2.5 text-right font-semibold">{formatMoney(kpis.cogs)}</td>
+                <td></td>
+              </tr>
+              {expenses.map((e) => (
+                <tr key={e.id}>
+                  <td className="py-2">{e.title}</td>
+                  <td className="py-2 text-right font-semibold">{formatMoney(e.amount)}</td>
+                  <td className="py-2 text-right">
+                    <button onClick={() => handleDeleteExpense(e.id)} className="text-slate-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </td>
                 </tr>
-                {expenses.map((e) => (
-                  <tr key={e.id}>
-                    <td className="py-2"><p className="font-medium">{e.title}</p><span className="text-[10px] text-slate-400">{e.category} • {e.date}</span></td>
-                    <td className="py-2 text-right font-semibold">{formatMoney(e.amount)}</td>
-                    <td className="py-2 text-right"><button onClick={() => handleDeleteExpense(e.id)} className="text-slate-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-slate-200 font-extrabold">
-                <tr><td className="pt-2">Grand Total</td><td className="pt-2 text-right">{formatMoney(kpis.totalAllExpenses)}</td><td></td></tr>
-              </tfoot>
-            </table>
-          </div>
+              ))}
+            </tbody>
+            <tfoot className="border-t border-slate-200 font-extrabold text-slate-900">
+              <tr><td className="pt-3">Grand total</td><td className="pt-3 text-right">{formatMoney(kpis.totalExpenses)}</td><td></td></tr>
+            </tfoot>
+          </table>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="mb-3 text-sm font-bold">● Orders count & Avg Order Value</h3>
-          <div className="h-52 w-full">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <div className="mb-4 flex items-center gap-4 text-xs font-bold text-slate-800">
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" /> Orders count</span>
+            <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-red-800" /> Avg Order Value</span>
+          </div>
+          <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={monthlyStatementRows}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+              <ComposedChart data={monthlyRows}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `৳${Number(v)}`} />
                 <Tooltip />
-                <Bar yAxisId="left" dataKey="ordersCount" name="Orders count" fill="#16a34a" radius={[5, 5, 0, 0]} />
-                <Line yAxisId="right" type="monotone" dataKey="aov" name="Avg Order Value" stroke="#991b1b" strokeWidth={2} />
+                <Bar yAxisId="left" dataKey="ordersCount" name="Orders count" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="right" type="monotone" dataKey="aov" name="Avg Order Value" stroke="#991b1b" strokeWidth={2} dot={{ r: 3 }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="mb-3 text-sm font-bold">● Cash Balance & Cash Ratio</h3>
-          <div className="h-52 w-full">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+          <div className="mb-4 flex items-center gap-4 text-xs font-bold text-slate-800">
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sky-600" /> Cash Balance</span>
+            <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 bg-red-800" /> Cash Ratio</span>
+          </div>
+          <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={monthlyStatementRows}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+              <ComposedChart data={monthlyRows}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} tickFormatter={(v) => `৳${Math.round(Number(v) / 1000)}K`} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
                 <Tooltip />
-                <Bar yAxisId="left" dataKey="cashBalance" name="Cash Balance" fill="#0284c7" radius={[5, 5, 0, 0]} />
-                <Line yAxisId="right" type="monotone" dataKey="cashRatio" name="Cash Ratio" stroke="#991b1b" strokeWidth={2} />
+                <Bar yAxisId="left" dataKey="cashBalance" name="Cash Balance" fill="#0284c7" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="right" type="monotone" dataKey="cashRatio" name="Cash Ratio" stroke="#991b1b" strokeWidth={2} dot={{ r: 3 }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-bold">Month-over-Month Profit & Loss (P&L) Financial Statement</h3>
-          <button onClick={handleExportCSV} className="text-xs font-bold text-blue-600">↓ Download Statement (CSV)</button>
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Month-over-Month Profit & Loss (P&L) Financial Statement</h3>
+            <p className="text-xs text-slate-500">Complete breakdown of Sales, Discounts, Returns, Shipping, Tax, Income, COGS, Gross Profit, Operating Expenses, and Net Margin.</p>
+          </div>
+          <button onClick={handleExportCSV} className="text-xs font-bold text-blue-600 hover:underline">↓ Download Statement (CSV)</button>
         </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full min-w-max text-left text-xs">
-            <thead className="border-b border-slate-200 bg-slate-50 dark:bg-slate-800">
+          <table className="w-full min-w-max border-collapse text-left text-xs text-slate-800">
+            <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
               <tr>
-                <th className="px-3 py-2.5">Month ↓</th>
-                <th className="px-3 py-2.5 text-right">Orders</th>
-                <th className="px-3 py-2.5 text-right">Total Sales</th>
-                <th className="px-3 py-2.5 text-right">Discounts</th>
-                <th className="px-3 py-2.5 text-right">Returns ({kpis.returnedOrdersCount})</th>
-                <th className="px-3 py-2.5 text-right">Shipping</th>
-                <th className="px-3 py-2.5 text-right">Income</th>
-                <th className="px-3 py-2.5 text-right">COGS</th>
-                <th className="px-3 py-2.5 text-right">Gross Profit</th>
-                <th className="px-3 py-2.5 text-right">Operating Exp</th>
-                <th className="px-3 py-2.5 text-right">Net Profit (Loss)</th>
-                <th className="px-3 py-2.5 text-right">Net Margin</th>
+                <th className="px-3 py-3">Month ↓</th>
+                <th className="px-3 py-3">Total Sales</th>
+                <th className="px-3 py-3">Discounts</th>
+                <th className="px-3 py-3">Returns</th>
+                <th className="px-3 py-3">Shipping</th>
+                <th className="px-3 py-3">Tax</th>
+                <th className="px-3 py-3">Income</th>
+                <th className="px-3 py-3">COGS</th>
+                <th className="px-3 py-3">Gross Profit</th>
+                <th className="px-3 py-3">Operating Expenses</th>
+                <th className="px-3 py-3">Net Profit (Loss)</th>
+                <th className="px-3 py-3">Net Margin</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {[...monthlyStatementRows].reverse().map((r) => (
+            <tbody className="divide-y divide-slate-100">
+              {[...monthlyRows].reverse().filter((r) => r.ordersCount > 0 || r.opEx > 0 || r.ym === "2026-11").map((r) => (
                 <tr key={r.ym}>
-                  <td className="px-3 py-2.5 font-bold">{r.ym}</td>
-                  <td className="px-3 py-2.5 text-right font-semibold">{r.ordersCount}</td>
-                  <td className="px-3 py-2.5 text-right">{formatMoney(r.sales)}</td>
-                  <td className="px-3 py-2.5 text-right text-rose-600">-{formatMoney(r.discounts)}</td>
-                  <td className="px-3 py-2.5 text-right text-amber-600">{formatMoney(r.returns)}</td>
-                  <td className="px-3 py-2.5 text-right">{formatMoney(r.shipping)}</td>
-                  <td className="px-3 py-2.5 text-right font-bold">{formatMoney(r.income)}</td>
-                  <td className="px-3 py-2.5 text-right text-rose-600">-{formatMoney(r.cogs)}</td>
-                  <td className="px-3 py-2.5 text-right font-semibold">{formatMoney(r.grossProfit)}</td>
-                  <td className="px-3 py-2.5 text-right text-rose-600">-{formatMoney(r.opEx)}</td>
-                  <td className="px-3 py-2.5 text-right font-extrabold text-emerald-600">{formatMoney(r.netProfit)}</td>
-                  <td className="px-3 py-2.5 text-right font-bold">{r.netMargin.toFixed(2)}%</td>
+                  <td className="px-3 py-3 font-medium">{r.ym}</td>
+                  <td className="bg-purple-50/50 px-3 py-3 font-semibold">{formatMoney(r.sales)}</td>
+                  <td className="bg-emerald-50/40 px-3 py-3">-{formatMoney(r.discounts)}</td>
+                  <td className="bg-emerald-50/40 px-3 py-3">-{formatMoney(r.returns)}</td>
+                  <td className="px-3 py-3">{formatMoney(r.shipping)}</td>
+                  <td className="bg-emerald-50/40 px-3 py-3">{formatMoney(r.tax)}</td>
+                  <td className="bg-fuchsia-50/60 px-3 py-3 font-semibold">{formatMoney(r.income)}</td>
+                  <td className="px-3 py-3">-{formatMoney(r.cogs)}</td>
+                  <td className="bg-emerald-50/70 px-3 py-3 font-semibold">{formatMoney(r.grossProfit)}</td>
+                  <td className="px-3 py-3">-{formatMoney(r.opEx)}</td>
+                  <td className="bg-emerald-100/90 px-3 py-3 font-extrabold text-emerald-950">{formatMoney(r.netProfit)}</td>
+                  <td className="bg-purple-50/60 px-3 py-3 font-bold text-purple-900">{r.netMargin.toFixed(2)}%</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot className="border-t-2 border-slate-300 bg-slate-100 font-extrabold dark:bg-slate-800">
+            <tfoot className="border-t-2 border-slate-200 font-extrabold text-slate-900">
               <tr>
-                <td className="px-3 py-2.5">Grand total</td>
-                <td className="px-3 py-2.5 text-right">{kpis.activeOrdersCount}</td>
-                <td className="px-3 py-2.5 text-right">{formatMoney(kpis.totalSalesGross)}</td>
-                <td className="px-3 py-2.5 text-right text-rose-600">-{formatMoney(kpis.totalDiscounts)}</td>
-                <td className="px-3 py-2.5 text-right text-amber-600">{formatMoney(kpis.totalReturnsVal)}</td>
-                <td className="px-3 py-2.5 text-right">{formatMoney(kpis.totalShipping)}</td>
-                <td className="px-3 py-2.5 text-right">{formatMoney(kpis.netIncome)}</td>
-                <td className="px-3 py-2.5 text-right text-rose-600">-{formatMoney(kpis.totalCOGS)}</td>
-                <td className="px-3 py-2.5 text-right">{formatMoney(kpis.grossProfit)}</td>
-                <td className="px-3 py-2.5 text-right text-rose-600">-{formatMoney(kpis.totalOperatingExpenses)}</td>
-                <td className="px-3 py-2.5 text-right text-emerald-600">{formatMoney(kpis.netProfit)}</td>
-                <td className="px-3 py-2.5 text-right">{kpis.netMargin.toFixed(2)}%</td>
+                <td className="px-3 py-3.5">Grand total</td>
+                <td className="px-3 py-3.5">{formatMoney(kpis.totalSales)}</td>
+                <td className="px-3 py-3.5">-{formatMoney(kpis.discounts)}</td>
+                <td className="px-3 py-3.5">-{formatMoney(kpis.returns)}</td>
+                <td className="px-3 py-3.5">{formatMoney(kpis.shipping)}</td>
+                <td className="px-3 py-3.5">{formatMoney(kpis.tax)}</td>
+                <td className="px-3 py-3.5">{formatMoney(kpis.income)}</td>
+                <td className="px-3 py-3.5">-{formatMoney(kpis.cogs)}</td>
+                <td className="px-3 py-3.5">{formatMoney(kpis.grossProfit)}</td>
+                <td className="px-3 py-3.5">-{formatMoney(kpis.opEx)}</td>
+                <td className="px-3 py-3.5">{formatMoney(kpis.netProfit)}</td>
+                <td className="px-3 py-3.5">{kpis.netMargin.toFixed(2)}%</td>
               </tr>
             </tfoot>
           </table>
@@ -573,27 +611,40 @@ export default function AnalyticsPnLPage() {
       </div>
 
       {showExpenseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-base font-bold">Log Business Expense (Synced to DB)</h3>
+              <h3 className="text-base font-bold">Log Business Expense</h3>
               <button onClick={() => setShowExpenseModal(false)}><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={handleAddExpense} className="space-y-3 text-xs">
-              <input type="text" required value={expTitle} onChange={(e) => setExpTitle(e.target.value)} placeholder="Expense Title (e.g., Meta Ad Boost)" className="w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-800" />
-              <select value={expCategory} onChange={(e) => setExpCategory(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
+              <input type="text" required value={expTitle} onChange={(e) => setExpTitle(e.target.value)} placeholder="Expense Title (e.g., Meta Ads / Packaging)" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2" />
+              <select value={expCategory} onChange={(e) => setExpCategory(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
                 <option value="Marketing & Social Ads">Marketing & Social Ads</option>
                 <option value="Courier & Packaging">Courier & Packaging</option>
                 <option value="Damaged / Return Loss">Damaged / Return Loss</option>
                 <option value="Staff & Office Rent">Staff & Office Rent</option>
-                <option value="Software & Utilities">Software & Utilities</option>
               </select>
               <div className="grid grid-cols-2 gap-2">
-                <input type="number" required min="1" step="any" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} placeholder="Amount" className="w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-800" />
-                <input type="date" required value={expDate} onChange={(e) => setExpDate(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-800" />
+                <input type="number" required min="1" step="any" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} placeholder="Amount" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2" />
+                <input type="date" required value={expDate} onChange={(e) => setExpDate(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2" />
               </div>
-              <button type="submit" className="w-full rounded-xl bg-blue-600 py-2.5 font-bold text-white">Save Expense to Database</button>
+              <button type="submit" className="w-full rounded-xl bg-blue-600 py-2.5 font-bold text-white">Save Expense</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showAiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-bold text-violet-700">✨ AI Financial Summary</h3>
+              <button onClick={() => setShowAiModal(false)}><X className="h-5 w-5" /></button>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-600">
+              Active Orders: <strong>{kpis.activeCount}</strong> (Returned/Cancelled: <strong>{kpis.returnedCount}</strong>). Net Revenue is <strong>{formatMoney(kpis.income)}</strong> with a Net Profit of <strong>{formatMoney(kpis.netProfit)}</strong> ({kpis.netMargin.toFixed(1)}% margin).
+            </p>
           </div>
         </div>
       )}
