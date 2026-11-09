@@ -1,4 +1,7 @@
+import json
 import random
+import urllib.parse
+import urllib.request
 from decimal import Decimal
 from django.db import connection, transaction
 from django.db.models import Sum
@@ -89,7 +92,7 @@ def ensure_seed_data():
 
     if not ChannelConfig.objects.exists():
         default_channels = [
-            ("Custom Website / Storefront", "Website Webhook", True, "https://yourstore.com"),
+            ("Custom Website / Storefront", "Website Webhook", True, "https://www.synvorait.com"),
             ("Shopify Store", "E-Commerce API", False, ""),
             ("WooCommerce / WordPress", "E-Commerce API", False, ""),
             ("Facebook Page & Messenger", "Meta Graph API", True, "https://facebook.com/mybusiness"),
@@ -133,7 +136,7 @@ def process_order_creation(payload: dict) -> Order:
         delivery_address = str(
             payload.get("delivery_address") or payload.get("shipping_address") or payload.get("address") or ""
         ).strip()
-        channel = str(payload.get("channel") or "Facebook Ad").strip()
+        channel = str(payload.get("channel") or "Website Checkout").strip()
         order_source_type = str(payload.get("order_source_type") or "Self-Checkout Button").strip()
         payment_method = str(payload.get("payment") or payload.get("payment_method") or "COD").strip()
         order_status = str(payload.get("status") or payload.get("order_status") or "Confirmed").strip()
@@ -432,15 +435,6 @@ class DailyExpenseViewSet(viewsets.ModelViewSet):
 
 
 class SocialPostViewSet(viewsets.ModelViewSet):
-    import urllib.request
-import urllib.parse
-import json
-
-import urllib.request
-import urllib.parse
-import json
-
-class SocialPostViewSet(viewsets.ModelViewSet):
     queryset = SocialPost.objects.all().order_by('-created_at')
     serializer_class = SocialPostSerializer
     permission_classes = [AllowAny]
@@ -453,7 +447,6 @@ class SocialPostViewSet(viewsets.ModelViewSet):
         ensure_database_schema()
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
 
-        # Optional Live Meta Graph API Publishing if real Page ID & Access Token are provided
         page_id = data.pop('meta_page_id', None)
         access_token = data.pop('meta_access_token', None)
         platform = str(data.get('platform', '')).lower()
@@ -483,6 +476,7 @@ class SocialPostViewSet(viewsets.ModelViewSet):
 
 
 SocialPostListCreateView = SocialPostViewSet
+
 
 class ChannelConfigViewSet(viewsets.ModelViewSet):
     queryset = ChannelConfig.objects.all().order_by('id')
@@ -530,6 +524,16 @@ class WorkspaceConfigAPIView(APIView):
 
 class OrderIntakeWebhookView(APIView):
     permission_classes = [AllowAny]
+
+    def get(self, request):
+        ensure_database_schema()
+        return Response({
+            "status": "Active",
+            "webhook_endpoint": "/api/v1/webhooks/order-intake/",
+            "supported_platforms": ["Custom Website", "WooCommerce / WordPress", "Shopify"],
+            "method": "Send HTTP POST with JSON order payload (customer, phone, address, product_name, quantity, amount, payment) to automatically create order, deduct inventory stock, and update CRM.",
+            "total_orders_synced": Order.objects.count(),
+        }, status=status.HTTP_200_OK)
 
     def post(self, request):
         payload = request.data.copy() if isinstance(request.data, dict) else {}
